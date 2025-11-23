@@ -221,6 +221,7 @@ private fun MainScreen(client: IrcClient) {
     val inputHistoryPos = remember { mutableStateMapOf<String, Int>() }
     val searchResults = remember { mutableStateListOf<SearchHit>() }
     val suggestions = remember { mutableStateListOf<String>() }
+    val ignoredNicksSet = remember(ignoreNicks) { parseIgnoreList(ignoreNicks) }
 
     val listState = rememberLazyListState()
     val bufferScroll = rememberScrollState()
@@ -265,6 +266,7 @@ private fun MainScreen(client: IrcClient) {
     }
 
     fun appendEvent(event: UiEvent) {
+        if (shouldIgnoreEvent(event, ignoredNicksSet)) return
         val channelName = eventChannelName(event, nick)
         val bufferType = when {
             channelName == null -> BufferType.STATUS
@@ -288,6 +290,7 @@ private fun MainScreen(client: IrcClient) {
                     highlights = highlights,
                     highlightExceptions = highlightExceptions,
                     mutedChannels = muted.filterValues { it }.keys,
+                    ignoredNicks = ignoredNicksSet,
                     quietHoursEnabled = quietHoursEnabled,
                     quietHoursStart = quietHoursStart,
                     quietHoursEnd = quietHoursEnd,
@@ -368,6 +371,11 @@ private fun MainScreen(client: IrcClient) {
             queries = queries,
             inputHistories = inputHistories,
             inputHistoryPos = inputHistoryPos,
+            ignoreNicks = ignoreNicks,
+            onIgnoreChange = { updated ->
+                ignoreNicks = updated
+                persistConfig()
+            }
         )
         outgoing = TextFieldValue("")
     }
@@ -1026,9 +1034,15 @@ private fun sendMessageOrCommand(
     queries: SnapshotStateList<String>,
     inputHistories: MutableMap<String, MutableList<String>> = mutableMapOf(),
     inputHistoryPos: MutableMap<String, Int> = mutableMapOf(),
+    ignoreNicks: String,
+    onIgnoreChange: (String) -> Unit,
 ) {
     val trimmed = text.trim()
     if (trimmed.isBlank()) return
+    fun emitStatusMessage(message: String) {
+        val status = channelEvents.getOrPut(STATUS_CHANNEL_KEY) { mutableStateListOf() }
+        status.add(UiEvent.System(message, time = System.currentTimeMillis()))
+    }
     val histKey = activeChannel.ifBlank { "global" }
     val history = inputHistories.getOrPut(histKey) { mutableListOf("") }
     if (history.isEmpty()) history.add("")
@@ -1086,6 +1100,138 @@ private fun sendMessageOrCommand(
                 channelEvents.getOrPut(key) { mutableStateListOf() }
                     .add(UiEvent.Chat(nick, target, body, System.currentTimeMillis()))
             }
+        }
+        return
+    }
+    if (trimmed.startsWith("/ignore")) {
+        val rest = trimmed.removePrefix("/ignore").trim()
+        val current = parseIgnoreList(ignoreNicks).toMutableSet()
+        fun saveIgnores() {
+            onIgnoreChange(formatIgnoreList(current))
+        }
+        if (rest.isBlank() || rest.equals("list", ignoreCase = true)) {
+            val summary = if (current.isEmpty()) "Ignore list is empty" else "Ignoring: ${current.sorted().joinToString(", ")}"
+            emitStatusMessage(summary)
+        } else {
+            fun addNick(rawNick: String) {
+                val normalized = normalizeNick(rawNick)
+                if (normalized.isEmpty()) {
+                    emitStatusMessage("Usage: /ignore +nick")
+                    return
+                }
+                val added = current.add(normalized)
+                if (added) {
+                    saveIgnores()
+                    emitStatusMessage("Ignoring ${normalized}")
+                } else {
+                    emitStatusMessage("${normalized} already ignored")
+                }
+            }
+            fun removeNick(rawNick: String) {
+                val normalized = normalizeNick(rawNick)
+                if (normalized.isEmpty()) {
+                    emitStatusMessage("Usage: /ignore -nick")
+                    return
+                }
+                val removed = current.remove(normalized)
+                if (removed) {
+                    saveIgnores()
+                    emitStatusMessage("No longer ignoring ${normalized}")
+                } else {
+                    emitStatusMessage("${normalized} was not ignored")
+                }
+            }
+            when {
+                rest.startsWith("+" ) -> addNick(rest.drop(1))
+                rest.startsWith("-") -> removeNick(rest.drop(1))
+                rest.lowercase().startsWith("add ") -> addNick(rest.substringAfter(' '))
+                rest.lowercase().startsWith("remove ") -> removeNick(rest.substringAfter(' '))
+                else -> {
+                    val normalized = normalizeNick(rest)
+                    if (normalized.isEmpty()) {
+                        emitStatusMessage("Usage: /ignore [+|-]nick | list")
+                    } else if (current.contains(normalized)) {
+                        current.remove(normalized)
+                        saveIgnores()
+                        emitStatusMessage("No longer ignoring ${normalized}")
+                    } else {
+                        current.add(normalized)
+                        saveIgnores()
+                        emitStatusMessage("Ignoring ${normalized}")
+                    }
+                }
+            }
+        }
+        return
+    }
+    if (trimmed.startsWith("/notice ")) {
+        val rest = trimmed.removePrefix("/notice ").trim()
+        val parts = rest.split(' ', limit = 2)
+        val target = parts.getOrNull(0)?.takeIf { it.isNotBlank() }
+        val body = parts.getOrNull(1)?.trim().orEmpty()
+        if (target == null || body.isEmpty()) {
+            emitStatusMessage("Usage: /notice <target> <text>")
+        } else {
+            client.sendRaw("NOTICE ${target} :${body}")
+            if (!target.startsWith("#") && queries.none { it.equals(target, ignoreCase = true) }) {
+                queries.add(target)
+                ensureBufferMeta(buffers, target, BufferType.QUERY)
+            }
+            if (!echoEnabled) {
+                val key = channelKeyOrStatus(target)
+                channelEvents.getOrPut(key) { mutableStateListOf() }
+                    .add(UiEvent.Notice(nick, target, body, System.currentTimeMillis()))
+            }
+        }
+        return
+    }
+    if (trimmed.startsWith("/invite")) {
+        val rest = trimmed.removePrefix("/invite").trim()
+        val parts = rest.split(' ', limit = 2)
+        val targetNick = parts.getOrNull(0)?.takeIf { it.isNotBlank() }
+        val explicitChannel = parts.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() }
+        val candidateChannel = explicitChannel ?: activeChannel.takeIf { it.startsWith("#") }
+        if (targetNick == null || candidateChannel.isNullOrBlank()) {
+            emitStatusMessage("Usage: /invite <nick> [#channel]")
+        } else {
+            client.sendRaw("INVITE ${targetNick} ${candidateChannel}")
+            emitStatusMessage("Invited ${targetNick} to ${candidateChannel}")
+        }
+        return
+    }
+    if (trimmed.startsWith("/away")) {
+        val message = trimmed.removePrefix("/away").trim()
+        if (message.isEmpty()) {
+            client.sendRaw("AWAY")
+            emitStatusMessage("Cleared away status")
+        } else {
+            client.sendRaw("AWAY :${message}")
+            emitStatusMessage("Set away: ${message}")
+        }
+        return
+    }
+    if (trimmed.startsWith("/topic")) {
+        val rest = trimmed.removePrefix("/topic").trim()
+        var channelArg: String? = null
+        var topicText: String? = null
+        if (rest.startsWith("#") || rest.startsWith("&")) {
+            val parts = rest.split(' ', limit = 2)
+            channelArg = parts.getOrNull(0)
+            topicText = parts.getOrNull(1)?.trim()
+        } else if (rest.isNotBlank()) {
+            topicText = rest
+        }
+        val resolvedChannel = channelArg?.takeIf { it.isNotBlank() } ?: activeChannel.takeIf { it.startsWith("#") }
+        if (resolvedChannel.isNullOrBlank()) {
+            emitStatusMessage("Join a channel or specify /topic #channel <text>")
+            return
+        }
+        if (topicText.isNullOrBlank()) {
+            client.sendRaw("TOPIC ${resolvedChannel}")
+            emitStatusMessage("Requested topic for ${resolvedChannel}")
+        } else {
+            client.sendRaw("TOPIC ${resolvedChannel} :${topicText}")
+            emitStatusMessage("Setting topic for ${resolvedChannel}")
         }
         return
     }
@@ -1372,6 +1518,7 @@ private fun maybeNotify(
     highlights: String,
     highlightExceptions: String,
     mutedChannels: Set<String> = emptySet(),
+    ignoredNicks: Set<String> = emptySet(),
     precomputedHighlight: Boolean? = null,
     quietHoursEnabled: Boolean,
     quietHoursStart: Int,
@@ -1385,6 +1532,7 @@ private fun maybeNotify(
         is UiEvent.Chat -> {
             if (event.nick.equals(selfNick, ignoreCase = true)) return
             if (event.target.startsWith("#") && event.target in mutedChannels) return
+            if (ignoredNicks.contains(event.nick.lowercase())) return
             val isDm = !event.target.startsWith("#") && event.target.equals(selfNick, ignoreCase = true)
             val highlightHit = precomputedHighlight ?: if (isDm) {
                 true
@@ -1421,6 +1569,22 @@ private fun buildTerms(selfNick: String?, csv: String): List<String> {
     val parts = csv.split(',', ';', ' ', '\n', '\t').mapNotNull { it.trim().ifEmpty { null } }
     return if (selfNick != null) listOf(selfNick) + parts else parts
 }
+
+private fun parseIgnoreList(raw: String): Set<String> {
+    if (raw.isBlank()) return emptySet()
+    return raw.split(',', ';', ' ', '\n', '\t')
+        .mapNotNull { normalizeNick(it).ifEmpty { null } }
+        .toSet()
+}
+
+private fun formatIgnoreList(entries: Collection<String>): String =
+    entries.filter { it.isNotBlank() }
+        .map { normalizeNick(it) }
+        .distinct()
+        .sorted()
+        .joinToString(",")
+
+private fun normalizeNick(nick: String): String = nick.trim().lowercase()
 
 private fun containsWord(text: String, needle: String): Boolean {
     val lower = text.lowercase()
@@ -1505,11 +1669,21 @@ private fun shouldHighlight(
     }
 }
 
+private fun shouldIgnoreEvent(event: UiEvent, ignored: Set<String>): Boolean {
+    if (ignored.isEmpty()) return false
+    val actor = when (event) {
+        is UiEvent.Chat -> event.nick
+        is UiEvent.Notice -> event.nick
+        else -> null
+    } ?: return false
+    return ignored.contains(actor.lowercase())
+}
+
 private fun buildSuggestions(token: String, users: List<ChannelUser>): List<String> {
     val trimmed = token.trim()
     if (trimmed.isBlank()) return emptyList()
     if (trimmed.startsWith("/")) {
-        val commands = listOf("/join", "/part", "/me", "/msg", "/whois", "/raw", "/search", "/ignore", "/query", "/topic")
+        val commands = listOf("/join", "/part", "/me", "/msg", "/notice", "/invite", "/away", "/whois", "/raw", "/search", "/ignore", "/query", "/topic")
         val lowercase = trimmed.lowercase()
         return commands.filter { it.startsWith(lowercase) }
     }
@@ -1527,6 +1701,10 @@ private fun commandHelpText(input: String, hasChannel: Boolean): String? {
         trimmed.startsWith("/search") -> "Search current buffer: /search keyword"
         trimmed.startsWith("/ignore") -> "Toggle ignores: /ignore +nick or /ignore remove nick"
         trimmed.startsWith("/query") -> "Open a DM buffer: /query nick"
+        trimmed.startsWith("/notice") -> "Send a notice: /notice <target> <text>"
+        trimmed.startsWith("/invite") && hasChannel -> "Invite someone: /invite nick (channel optional)"
+        trimmed.startsWith("/invite") && !hasChannel -> "Invite someone: /invite nick #channel"
+        trimmed.startsWith("/away") -> "Set away or return: /away [message]"
         trimmed.startsWith("/topic") && hasChannel -> "Set channel topic: /topic new text"
         trimmed.startsWith("/topic") && !hasChannel -> "Join a channel to use /topic"
         else -> null
