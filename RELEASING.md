@@ -1,0 +1,123 @@
+# Releasing IRC Android Client
+
+This guide covers building a signed release APK/App Bundle and publishing to Google Play.
+
+## Prereqs
+
+- Java 17+ and Android SDK installed
+- Keystore at `keystore/ircclient.keystore` with passwords in `local.properties`
+- App version updated in `app/build.gradle.kts` (bump `versionCode`, adjust `versionName`)
+
+## Build artifacts
+
+- Release APK:
+
+```bash
+./gradlew assembleRelease
+# Output: app/build/outputs/apk/release/app-release.apk
+```
+
+- Play App Bundle (recommended for Play Console):
+
+```bash
+./gradlew bundleRelease
+# Output: app/build/outputs/bundle/release/app-release.aab
+```
+
+## Local install options
+
+- Install release APK on a connected device:
+
+```bash
+export PATH="$HOME/Android/Sdk/platform-tools:$PATH"
+adb install -r app/build/outputs/apk/release/app-release.apk
+```
+
+- Install AAB to a device using bundletool (optional):
+
+```bash
+# Download bundletool
+curl -L -o bundletool.jar https://github.com/google/bundletool/releases/download/1.17.2/bundletool-all-1.17.2.jar
+# Build an .apks archive signed with the existing keystore
+PW=$(grep '^RELEASE_STORE_PASSWORD=' local.properties | cut -d= -f2)
+java -jar bundletool.jar build-apks \
+  --bundle=app/build/outputs/bundle/release/app-release.aab \
+  --output=app/release.apks \
+  --ks=keystore/ircclient.keystore \
+  --ks-pass=pass:$PW \
+  --ks-key-alias=$(grep '^RELEASE_KEY_ALIAS=' local.properties | cut -d= -f2) \
+  --key-pass=pass:$PW \
+  --connected-device
+# Install to the connected device
+java -jar bundletool.jar install-apks --apks=app/release.apks
+```
+
+## Verification
+
+Use these steps to quickly verify a release build on device.
+
+1. Connect a device
+
+- USB debugging: Enable Developer Options and USB debugging on the phone, then:
+
+```bash
+export PATH="$HOME/Android/Sdk/platform-tools:$PATH"
+adb devices -l
+```
+
+- Wireless debugging (Android 11+): On the phone enable Wireless debugging, then pair or connect:
+
+```bash
+# If using a pairing code from phone (Pair device)
+adb pair <phone-ip>:<pairing-port>
+# Then connect
+adb connect <phone-ip>:<adb-port>
+adb devices -l
+```
+
+1. Install and launch
+
+```bash
+adb install -r -d app/build/outputs/apk/release/app-release.apk
+adb shell am start -n com.example.ircclient/.MainActivity
+```
+
+1. Sanity checks in-app
+
+- Defaults: server `irc.libera.chat`, port `6697`, TLS on, channel `#android`.
+- Connect: Tap Connect; you should see messages populate after connection.
+- Auto-join: After welcome (001) or end-of-MOTD (376), the app auto-JOINs the default channel.
+- Send: Post a message in the composer; it should appear in-channel without "no external messages" errors.
+
+1. Logcat (optional)
+
+```bash
+adb logcat -s IrcClient AndroidRuntime
+```
+
+- Look for: "Connecting…", server numerics (001/376), "Auto-joining", inbound PRIVMSG, and PING/PONG handling.
+
+## Troubleshooting
+
+- No devices in `adb devices`: Reconnect cable, switch USB mode to File Transfer, or use Wireless debugging.
+- `INSTALL_FAILED_OLDER_SDK`: Ensure device API >= 24.
+- Connection timeout: Verify host/port/TLS. Default is TLS 6697. Check network/firewall.
+- TLS handshake issues: Ensure correct SNI/host; try mobile data vs Wi‑Fi.
+- "no external messages": Wait for JOIN to complete; the app auto-joins after 001/376.
+
+## Google Play upload
+
+1. Create an app in Play Console (package: `com.example.ircclient`)
+2. Upload `app-release.aab` to an internal testing track
+3. Fill release notes, roll out to testers
+4. After validation, promote to closed/open or production
+
+## Versioning
+
+- Increment `versionCode` for every release; `versionName` is a human-readable string
+- Location: `app/build.gradle.kts` under `defaultConfig`
+
+## Keystore safety
+
+- Backup `keystore/ircclient.keystore` securely; losing it prevents updates to the app
+- Do not commit the keystore or passwords; `local.properties` is git-ignored

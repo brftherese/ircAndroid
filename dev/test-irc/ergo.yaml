@@ -1,0 +1,38 @@
+# Minimal Ergo IRCd configuration for local testing (no TLS)
+# Docs: https://ergo.chat/
+
+network:
+  name: "LocalNet"
+
+server:
+  name: "irc.local"
+  network-name: "LocalNet"
+  # Listen on all interfaces, plaintext for simplicity
+  listeners:
+    plain:
+      address: "0.0.0.0"
+      port: 6667
+
+accounts:
+  # Allow account registration and logins if you want to test NickServ-like flows
+  registration:
+    enabled: true
+  authentication-enabled: true
+
+channels:
+  defaults:
+    modes: "+nt"
+
+oper-classes:
+  localop:
+    commands:
+      - kill
+      - kline
+
+opers:
+  admin:
+    class: "localop"
+    password: "changeme"
+
+datastore:
+  path: "/ircd-data"

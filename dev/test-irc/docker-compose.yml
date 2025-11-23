@@ -1,0 +1,11 @@
+services:
+  ergo:
+    image: ghcr.io/ergochat/ergo:v2.15.0
+    container_name: ergo-dev
+    restart: unless-stopped
+    ports:
+      - "6667:6667"
+    entrypoint: ["/ircd-bin/ergo"]
+    command: ["run"]
+    volumes:
+      - ./data:/ircd

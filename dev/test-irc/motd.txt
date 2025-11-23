@@ -1,0 +1,4 @@
+Welcome to the Local Test IRC server (miniircd)
+
+This server is for local development/testing only.
+Try joining #test after connecting.

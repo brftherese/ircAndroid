@@ -1,0 +1,76 @@
+# IRC Android Client
+
+An offline-first Android IRC client written in Kotlin with Jetpack Compose. It now includes multi-buffer chat, notifications, highlights, search, and persistent preferences on top of the core IRC socket implementation.
+
+## Key Features
+
+- Configurable server/port/TLS/nick/user plus SASL credentials and auto-join channel list
+- Multi-buffer sidebar for status, channels, and direct messages with unread/highlight counts
+- NickServ helpers, slash commands (`/join`, `/msg`, `/me`, `/raw`, `/search`, etc.), and smart autocomplete suggestions
+- Highlight detection with quiet hours, mute controls, and local notifications (Android 13+ runtime permission aware)
+- Per-channel search, message history, day dividers, and “new messages” markers
+- Persistent settings via DataStore plus optional compact layout and adjustable font scaling
+
+## Project Structure
+
+- `app/src/main/java/com/example/ircclient/IrcClient.kt`: Simple IRC socket client (plain TCP or TLS)
+- `app/src/main/java/com/example/ircclient/MainActivity.kt`: Activity + Compose UI, state management, dialogs, commands
+- `app/src/main/java/com/example/ircclient/ui/theme/Theme.kt`: Simple Material3 theme wrapper
+- `app/src/main/AndroidManifest.xml`: Declares `INTERNET` permission and launcher activity
+
+## Requirements
+
+- Android Studio (Giraffe+ recommended) or Gradle 8.5+
+- Android SDK: compile/target SDK 34, min SDK 24
+- JDK 17+
+
+## Getting Started
+
+Open the project in Android Studio and let it sync. Build and run on a device/emulator with network access. The repository already includes a Gradle wrapper, so no additional setup is required.
+
+Alternatively, from a terminal:
+
+```bash
+cd ircAndroid
+./gradlew assembleDebug
+```
+
+Then install the APK from `app/build/outputs/apk/debug/` onto a device.
+
+## Usage
+
+### Connecting
+
+1. Enter server (e.g., `irc.libera.chat`) and port (`6697` for TLS or `6667` for plain).
+2. Toggle TLS, pick a nick/user/real name, and configure the primary/auto-join channels.
+3. (Optional) Add SASL credentials, highlight/ignore lists, and quiet hours in **Advanced settings**.
+4. Tap **Connect**. The sidebar shows Status + joined channels/direct messages with unread badges.
+
+### Chatting & Commands
+
+- Composer accepts plain text or slash commands. Examples:
+  - `/join #channel`, `/part`, `/me`, `/msg nick text`, `/raw PRIVMSG ...`, `/whois nick`
+  - `/search keyword` opens a dialog scoped to the active buffer
+- Suggestions drop-down appears when typing `/` commands or `@nick` mentions.
+- Buffers can be muted, marked read, and switched quickly via the sidebar or AssistChip shortcuts.
+
+### Notifications & Quiet Hours
+
+- Highlight detection triggers notifications for direct messages or configured highlight terms.
+- Quiet hours can be enabled with a start/end hour window to suppress alerts.
+- Android 13+ prompts for the notification permission on first launch.
+
+### Persistence
+
+- All connection + appearance settings are saved via DataStore and restored on launch.
+- Font scaling and compact layout toggle help adapt to phones/tablets.
+
+## Notes
+
+- Some networks require TLS or SASL auth; both are supported but advanced account workflows (e.g., NickServ registration) still rely on manual commands.
+- The client handles reconnect, names tracking, highlights, and notifications locally. Further polish (themes, plugin hooks, etc.) can be layered on.
+- Logcat still mirrors raw protocol lines for debugging.
+
+## License
+
+This project is provided as-is for demo purposes.
