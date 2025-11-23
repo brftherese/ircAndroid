@@ -25,3 +25,7 @@ Thumbs.db
 
 # Misc
 *.log
+
+# Local virtual environments
+.venv/
+dev/test-irc/.venv/
