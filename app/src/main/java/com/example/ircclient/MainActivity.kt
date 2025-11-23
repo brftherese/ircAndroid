@@ -375,6 +375,9 @@ private fun MainScreen(client: IrcClient) {
             onIgnoreChange = { updated ->
                 ignoreNicks = updated
                 persistConfig()
+            },
+            onOpenQuery = { target ->
+                if (target.isNotBlank()) currentChannel = target
             }
         )
         outgoing = TextFieldValue("")
@@ -1036,6 +1039,7 @@ private fun sendMessageOrCommand(
     inputHistoryPos: MutableMap<String, Int> = mutableMapOf(),
     ignoreNicks: String,
     onIgnoreChange: (String) -> Unit,
+    onOpenQuery: (String) -> Unit,
 ) {
     val trimmed = text.trim()
     if (trimmed.isBlank()) return
@@ -1055,7 +1059,12 @@ private fun sendMessageOrCommand(
     }
     if (trimmed.startsWith("/whois ")) {
         val nickArg = trimmed.removePrefix("/whois ").trim()
-        if (nickArg.isNotEmpty()) client.sendRaw("WHOIS ${nickArg}")
+        if (nickArg.isNotEmpty()) {
+            client.sendRaw("WHOIS ${nickArg}")
+            emitStatusMessage("Requesting WHOIS for ${nickArg}")
+        } else {
+            emitStatusMessage("Usage: /whois <nick>")
+        }
         return
     }
     if (trimmed.startsWith("/join ")) {
@@ -1099,6 +1108,34 @@ private fun sendMessageOrCommand(
                 val key = channelKeyOrStatus(target)
                 channelEvents.getOrPut(key) { mutableStateListOf() }
                     .add(UiEvent.Chat(nick, target, body, System.currentTimeMillis()))
+            }
+        }
+        return
+    }
+    if (trimmed.startsWith("/query")) {
+        val rest = trimmed.removePrefix("/query").trim()
+        if (rest.isBlank()) {
+            emitStatusMessage("Usage: /query <nick> [message]")
+            return
+        }
+        val parts = rest.split(' ', limit = 2)
+        val target = parts.getOrNull(0)?.takeIf { it.isNotBlank() } ?: run {
+            emitStatusMessage("Usage: /query <nick> [message]")
+            return
+        }
+        val initialMessage = parts.getOrNull(1)?.trim().orEmpty()
+        if (queries.none { it.equals(target, ignoreCase = true) }) {
+            queries.add(target)
+            queries.sortBy { it.lowercase() }
+        }
+        ensureBufferMeta(buffers, target, BufferType.QUERY)
+        onOpenQuery(target)
+        if (initialMessage.isNotEmpty()) {
+            client.sendMessage(target, initialMessage)
+            if (!echoEnabled) {
+                val key = channelKeyOrStatus(target)
+                channelEvents.getOrPut(key) { mutableStateListOf() }
+                    .add(UiEvent.Chat(nick, target, initialMessage, System.currentTimeMillis()))
             }
         }
         return
@@ -1700,7 +1737,8 @@ private fun commandHelpText(input: String, hasChannel: Boolean): String? {
     return when {
         trimmed.startsWith("/search") -> "Search current buffer: /search keyword"
         trimmed.startsWith("/ignore") -> "Toggle ignores: /ignore +nick or /ignore remove nick"
-        trimmed.startsWith("/query") -> "Open a DM buffer: /query nick"
+        trimmed.startsWith("/query") -> "Open a DM buffer: /query nick [message]"
+        trimmed.startsWith("/whois") -> "Whois lookup: /whois nick"
         trimmed.startsWith("/notice") -> "Send a notice: /notice <target> <text>"
         trimmed.startsWith("/invite") && hasChannel -> "Invite someone: /invite nick (channel optional)"
         trimmed.startsWith("/invite") && !hasChannel -> "Invite someone: /invite nick #channel"

@@ -18,7 +18,7 @@ The Android client should eventually match the end-user abilities exposed by The
 - [ ] Rich link previews + media viewer: port The Lounge `prefetch`/`ImageViewer` flow so URLs unfurl (with caching and size limits) and inline image/video modals are available on Android.
 - [ ] File uploads: add share sheet + upload handling to parity with `fileUpload` support on the server side.
 - [ ] Context menus + moderation tools: long-press actions for kick/ban/voice/op, mirroring `ContextMenu.vue`.
-- [ ] Advanced commands UI: expose helpers for `/ignore`, `/query`, `/topic`, `/notice`, `/invite`, `/away`, `/whois` with autocomplete and validation just like the desktop client. _(In progress – /notice, /invite, /away, `/ignore`, and smarter `/topic` handling landed on 2025-11-22/23; remaining work: richer UI affordances for `/query` + `/whois` and contextual validation.)_
+- [ ] Advanced commands UI: expose helpers for `/ignore`, `/query`, `/topic`, `/notice`, `/invite`, `/away`, `/whois` with autocomplete and validation just like the desktop client. _(In progress – /notice, /invite, /away, `/ignore`, smarter `/topic`, `/query`, and improved `/whois` feedback landed on 2025-11-22/23; remaining work: contextual validation + UI affordances for power users.)_
 
 ## P2 - Personalization + integrations
 

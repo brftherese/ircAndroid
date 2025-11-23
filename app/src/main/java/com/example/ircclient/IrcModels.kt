@@ -105,6 +105,56 @@ fun parseIrcLine(line: String): UiEvent? {
                 "376" -> UiEvent.System(m.trailing ?: "End of MOTD", time = whenMs)
                 // No MOTD
                 "422" -> UiEvent.System(m.trailing ?: "MOTD missing", time = whenMs)
+                // WHOIS details
+                "311" -> {
+                    val whoNick = m.params.getOrNull(1)
+                    if (!whoNick.isNullOrBlank()) {
+                        val user = m.params.getOrNull(2) ?: ""
+                        val host = m.params.getOrNull(3) ?: ""
+                        val realName = m.trailing ?: ""
+                        UiEvent.System("[WHOIS] ${whoNick}: ${user}@${host} (${realName})", target = whoNick, time = whenMs)
+                    } else null
+                }
+                "312" -> {
+                    val whoNick = m.params.getOrNull(1)
+                    if (!whoNick.isNullOrBlank()) {
+                        val server = m.params.getOrNull(2) ?: ""
+                        val info = m.trailing ?: ""
+                        UiEvent.System("[WHOIS] ${whoNick}: connected via ${server} ${info}", target = whoNick, time = whenMs)
+                    } else null
+                }
+                "313" -> {
+                    val whoNick = m.params.getOrNull(1)
+                    if (!whoNick.isNullOrBlank()) {
+                        UiEvent.System("[WHOIS] ${whoNick} is an operator", target = whoNick, time = whenMs)
+                    } else null
+                }
+                "317" -> {
+                    val whoNick = m.params.getOrNull(1)
+                    if (!whoNick.isNullOrBlank()) {
+                        val idleSeconds = m.params.getOrNull(2)?.toLongOrNull()
+                        val signOnEpoch = m.params.getOrNull(3)?.toLongOrNull()?.times(1000)
+                        val idleText = idleSeconds?.let { "idle ${it}s" } ?: "idle unknown"
+                        val signOnText = signOnEpoch?.let { ts ->
+                            val formatted = java.text.DateFormat.getDateTimeInstance().format(java.util.Date(ts))
+                            " since ${formatted}"
+                        } ?: ""
+                        UiEvent.System("[WHOIS] ${whoNick}: ${idleText}${signOnText}", target = whoNick, time = whenMs)
+                    } else null
+                }
+                "318" -> {
+                    val whoNick = m.params.getOrNull(1)
+                    if (!whoNick.isNullOrBlank()) {
+                        UiEvent.System("[WHOIS] ${whoNick}: end", target = whoNick, time = whenMs)
+                    } else null
+                }
+                "319" -> {
+                    val whoNick = m.params.getOrNull(1)
+                    if (!whoNick.isNullOrBlank()) {
+                        val channels = m.trailing ?: ""
+                        UiEvent.System("[WHOIS] ${whoNick}: ${channels}", target = whoNick, time = whenMs)
+                    } else null
+                }
                 "332" -> {
                     val ch = m.params.getOrNull(1)
                     if (!ch.isNullOrBlank()) UiEvent.Topic(ch, m.trailing ?: "", time = whenMs) else null
