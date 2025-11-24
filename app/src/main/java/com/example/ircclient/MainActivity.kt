@@ -51,6 +51,8 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -92,6 +94,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.example.ircclient.MentionBufferKind
+import com.example.ircclient.MentionEntry
+import com.example.ircclient.loadMentions
+import com.example.ircclient.saveMentions
 import com.example.ircclient.ui.ConnectedTopBar
 import com.example.ircclient.ui.theme.AppTheme
 import kotlinx.coroutines.flow.collectLatest
@@ -230,6 +236,8 @@ private fun MainScreen(client: IrcClient) {
     val bufferScroll = rememberScrollState()
     val moderationEnabled = currentChannel?.startsWith("#") == true
     val actionEnabled = remember(selfModeSymbol) { { action: ModerationAction -> canPerformModeration(action, selfModeSymbol) } }
+    val mentions = remember { mutableStateListOf<MentionEntry>() }
+    var showMentions by remember { mutableStateOf(false) }
 
     fun persistConfig() {
         val cfg = SavedConfig(
@@ -254,6 +262,10 @@ private fun MainScreen(client: IrcClient) {
             quietHoursEnd = quietHoursEnd,
         )
         scope.launch { saveConfig(context, cfg) }
+    }
+    
+    fun persistMentionsState() {
+        scope.launch { saveMentions(context, mentions.take(MAX_MENTIONS)) }
     }
 
     fun resetSessionState() {
@@ -281,6 +293,7 @@ private fun MainScreen(client: IrcClient) {
         val key = channelKeyOrStatus(channelName)
         val list = channelEvents.getOrPut(key) { mutableStateListOf() }
         val meta = ensureBufferMeta(buffers, channelName, bufferType)
+        val insertIndex = list.lastIndex + 1
         list.add(event)
 
         val activeKey = channelKeyOrStatus(currentChannel)
@@ -300,8 +313,21 @@ private fun MainScreen(client: IrcClient) {
                     quietHoursStart = quietHoursStart,
                     quietHoursEnd = quietHoursEnd,
                 )
+                val mentionTarget = if (bufferType == BufferType.QUERY) event.nick else channelName ?: STATUS_CHANNEL_KEY
+                val entry = MentionEntry(
+                    source = event.nick,
+                    bufferName = mentionTarget,
+                    bufferKind = bufferType.toMentionKind(),
+                    text = event.text,
+                    time = event.time,
+                    dismissed = false,
+                )
+                mentions.add(0, entry)
+                if (mentions.size > MAX_MENTIONS) mentions.removeLast()
+                persistMentionsState()
             }
             if (meta.firstUnreadTime == null) meta.firstUnreadTime = event.time
+            if (meta.markerIndex == null) meta.markerIndex = insertIndex
         }
 
         when (event) {
@@ -462,6 +488,10 @@ private fun MainScreen(client: IrcClient) {
         quietHoursEnabled = saved.quietHoursEnabled
         quietHoursStart = saved.quietHoursStart
         quietHoursEnd = saved.quietHoursEnd
+
+        val storedMentions = loadMentions(context)
+        mentions.clear()
+        mentions.addAll(storedMentions.take(MAX_MENTIONS))
     }
 
     LaunchedEffect(client) {
@@ -550,6 +580,8 @@ private fun MainScreen(client: IrcClient) {
         SessionScreen(
             connected = connected,
             nick = nick,
+            mentionsCount = mentions.count { !it.dismissed },
+            onMentions = { showMentions = true },
             compactMode = compactMode,
             onToggleCompact = { compactMode = !compactMode },
             quietHoursEnabled = quietHoursEnabled,
@@ -626,6 +658,27 @@ private fun MainScreen(client: IrcClient) {
         query = searchQuery,
         results = searchResults,
         onDismiss = { showSearchResults = false }
+    )
+
+    MentionsDialog(
+        show = showMentions,
+        mentions = mentions,
+        onDismiss = { showMentions = false },
+        onClear = {
+            mentions.clear()
+            persistMentionsState()
+            showMentions = false
+        },
+        onJump = { entry ->
+            entry.dismissed = true
+            when (entry.bufferKind) {
+                MentionBufferKind.CHANNEL -> currentChannel = entry.bufferName
+                MentionBufferKind.QUERY -> currentChannel = entry.bufferName
+                MentionBufferKind.STATUS -> currentChannel = null
+            }
+            persistMentionsState()
+            showMentions = false
+        }
     )
 
     SettingsDialog(
@@ -734,6 +787,8 @@ private fun ConnectionForm(
 private fun SessionScreen(
     connected: Boolean,
     nick: String,
+    mentionsCount: Int,
+    onMentions: () -> Unit,
     compactMode: Boolean,
     onToggleCompact: () -> Unit,
     quietHoursEnabled: Boolean,
@@ -771,7 +826,9 @@ private fun SessionScreen(
                 currentChannel = currentChannel,
                 onUsers = onShowUsers,
                 onSettings = onShowSettings,
-                onDisconnect = onDisconnect
+                onDisconnect = onDisconnect,
+                mentionsCount = mentionsCount,
+                onMentions = onMentions
             )
         }
     ) { padding ->
@@ -838,8 +895,15 @@ private fun SessionScreen(
                     if (index == 0 || previous == null || !isSameDay(previous.time, event.time)) {
                         DayDivider(event.time)
                     }
-                    val firstUnread = buffers[channelKeyOrStatus(currentChannel)]?.firstUnreadTime
-                    if (firstUnread != null && (previous == null || previous.time < firstUnread) && event.time >= firstUnread) {
+                    val meta = buffers[channelKeyOrStatus(currentChannel)]
+                    val firstUnread = meta?.firstUnreadTime
+                    val markerIdx = meta?.markerIndex
+                    val shouldShowMarker = when {
+                        markerIdx != null -> index == markerIdx
+                        firstUnread != null -> (previous == null || previous.time < firstUnread) && event.time >= firstUnread
+                        else -> false
+                    }
+                    if (shouldShowMarker) {
                         NewMessagesDivider()
                     }
                     when (event) {
@@ -1007,6 +1071,64 @@ private fun ModerationActionDialog(
             }
         }
     )
+}
+
+@Composable
+private fun MentionsDialog(
+    show: Boolean,
+    mentions: List<MentionEntry>,
+    onDismiss: () -> Unit,
+    onClear: () -> Unit,
+    onJump: (MentionEntry) -> Unit,
+) {
+    if (!show) return
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        dismissButton = {
+            TextButton(onClick = {
+                onClear()
+            }) { Text("Clear") }
+        },
+        title = { Text("Mentions (${mentions.size})") },
+        text = {
+            if (mentions.isEmpty()) {
+                Text("No highlights yet.")
+            } else {
+                LazyColumn(Modifier.heightIn(max = 400.dp)) {
+                    itemsIndexed(mentions) { _, mention ->
+                        MentionRow(entry = mention, onJump = onJump)
+                    }
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun MentionRow(entry: MentionEntry, onJump: (MentionEntry) -> Unit) {
+    val targetLabel = when (entry.bufferKind) {
+        MentionBufferKind.STATUS -> "Status"
+        else -> entry.bufferName
+    }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clickable { onJump(entry) }
+            .padding(vertical = 6.dp)
+    ) {
+        Text(
+            text = "${entry.source} in ${targetLabel}",
+            style = MaterialTheme.typography.labelMedium
+        )
+        Text(entry.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(
+            DateFormat.format("MMM d, HH:mm", entry.time).toString(),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.outline
+        )
+        HorizontalDivider(modifier = Modifier.padding(top = 6.dp))
+    }
 }
 
 @Composable
@@ -1885,17 +2007,25 @@ private fun isHighlight(selfNick: String, text: String, highlights: String, high
 
 private enum class BufferType { STATUS, CHANNEL, QUERY }
 
+private fun BufferType.toMentionKind(): MentionBufferKind = when (this) {
+    BufferType.STATUS -> MentionBufferKind.STATUS
+    BufferType.CHANNEL -> MentionBufferKind.CHANNEL
+    BufferType.QUERY -> MentionBufferKind.QUERY
+}
+
 private class BufferMeta(
     name: String,
     val type: BufferType,
     unread: Int = 0,
     highlight: Int = 0,
     firstUnread: Long? = null,
+    markerEventIdx: Int? = null,
 ) {
     var name by mutableStateOf(name)
     var unread by mutableStateOf(unread)
     var highlight by mutableStateOf(highlight)
     var firstUnreadTime by mutableStateOf(firstUnread)
+    var markerIndex by mutableStateOf(markerEventIdx)
 }
 
 private data class SearchHit(
@@ -1922,6 +2052,7 @@ private fun BufferMeta.resetCounts() {
     if (unread != 0) unread = 0
     if (highlight != 0) highlight = 0
     firstUnreadTime = null
+    markerIndex = null
 }
 
 private fun shouldHighlight(
@@ -1996,6 +2127,7 @@ private fun quietHoursWindowLabel(start: Int, end: Int): String {
 }
 
 private const val STATUS_CHANNEL_KEY = "_status"
+private const val MAX_MENTIONS = 100
 
 private fun channelKeyOrStatus(name: String?): String = name?.takeIf { it.isNotBlank() }?.lowercase() ?: STATUS_CHANNEL_KEY
 

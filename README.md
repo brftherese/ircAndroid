@@ -6,6 +6,7 @@ An offline-first Android IRC client written in Kotlin with Jetpack Compose. It n
 
 - Configurable server/port/TLS/nick/user plus SASL credentials and auto-join channel list
 - Multi-buffer sidebar for status, channels, and direct messages with unread/highlight counts
+- Dedicated mentions drawer with a top-bar badge that aggregates highlights across buffers and persists the last 100 entries
 - NickServ helpers, slash commands (`/join`, `/msg`, `/me`, `/raw`, `/search`, etc.), and smart autocomplete suggestions
 - Highlight detection with quiet hours, mute controls, and local notifications (Android 13+ runtime permission aware)
 - Contextual moderation menus: long-press members or chat messages to op/deop/voice/kick/ban when your channel mode allows it
@@ -55,6 +56,12 @@ Then install the APK from `app/build/outputs/apk/debug/` onto a device.
 - Suggestions drop-down appears when typing `/` commands or `@nick` mentions.
 - Long-press a username in the Users list or a chat row to open moderation actions (op/deop/voice/kick/ban); options stay disabled unless your nick currently has the right mode.
 - Buffers can be muted, marked read, and switched quickly via the sidebar or AssistChip shortcuts.
+
+### Mentions Drawer
+
+- Tap the @ badge in the top app bar to open the Mentions drawer. It lists recent highlights (channel mentions or direct messages) newest-first.
+- Selecting an entry jumps straight to the originating buffer and marks that mention as read while keeping the history for later review.
+- Use **Clear** in the dialog to wipe the stored history; otherwise, up to 100 mentions persist between launches via DataStore, matching The Lounge’s behavior.
 
 ### Notifications & Quiet Hours
 
