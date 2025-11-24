@@ -8,6 +8,7 @@ An offline-first Android IRC client written in Kotlin with Jetpack Compose. It n
 - Multi-buffer sidebar for status, channels, and direct messages with unread/highlight counts
 - NickServ helpers, slash commands (`/join`, `/msg`, `/me`, `/raw`, `/search`, etc.), and smart autocomplete suggestions
 - Highlight detection with quiet hours, mute controls, and local notifications (Android 13+ runtime permission aware)
+- Contextual moderation menus: long-press members or chat messages to op/deop/voice/kick/ban when your channel mode allows it
 - Per-channel search, message history, day dividers, and “new messages” markers
 - Persistent settings via DataStore plus optional compact layout and adjustable font scaling
 
@@ -52,6 +53,7 @@ Then install the APK from `app/build/outputs/apk/debug/` onto a device.
   - `/join #channel`, `/part`, `/me`, `/msg nick text`, `/raw PRIVMSG ...`, `/whois nick`
   - `/search keyword` opens a dialog scoped to the active buffer
 - Suggestions drop-down appears when typing `/` commands or `@nick` mentions.
+- Long-press a username in the Users list or a chat row to open moderation actions (op/deop/voice/kick/ban); options stay disabled unless your nick currently has the right mode.
 - Buffers can be muted, marked read, and switched quickly via the sidebar or AssistChip shortcuts.
 
 ### Notifications & Quiet Hours

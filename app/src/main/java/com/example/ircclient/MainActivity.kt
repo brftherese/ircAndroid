@@ -222,9 +222,14 @@ private fun MainScreen(client: IrcClient) {
     val searchResults = remember { mutableStateListOf<SearchHit>() }
     val suggestions = remember { mutableStateListOf<String>() }
     val ignoredNicksSet = remember(ignoreNicks) { parseIgnoreList(ignoreNicks) }
+    val channelUsersMap = remember(users) { users.associateBy { it.nick.lowercase() } }
+    val selfModeSymbol = remember(channelUsersMap, nick) { channelUsersMap[nick.lowercase()]?.mode }
+    var pendingModerationTarget by remember { mutableStateOf<ModerationTarget?>(null) }
 
     val listState = rememberLazyListState()
     val bufferScroll = rememberScrollState()
+    val moderationEnabled = currentChannel?.startsWith("#") == true
+    val actionEnabled = remember(selfModeSymbol) { { action: ModerationAction -> canPerformModeration(action, selfModeSymbol) } }
 
     fun persistConfig() {
         val cfg = SavedConfig(
@@ -342,10 +347,18 @@ private fun MainScreen(client: IrcClient) {
         status.add(UiEvent.System(message, time = System.currentTimeMillis()))
     }
 
-    fun handleModerationAction(target: ChannelUser, action: ModerationAction) {
+    fun handleModerationAction(target: ModerationTarget, action: ModerationAction, selfMode: Char?, selfNick: String) {
         val channel = currentChannel?.takeIf { it.startsWith("#") }
         if (channel.isNullOrBlank()) {
             emitStatus("Select a channel to use moderation tools.")
+            return
+        }
+        if (target.nick.equals(selfNick, ignoreCase = true)) {
+            emitStatus("You can't moderate yourself.")
+            return
+        }
+        if (!canPerformModeration(action, selfMode)) {
+            emitStatus("Insufficient privileges to ${moderationActionLabel(action)}.")
             return
         }
         val targetNick = target.nick
@@ -581,7 +594,13 @@ private fun MainScreen(client: IrcClient) {
             },
             helpText = helpText,
             onShowUsers = { showUsers = true },
-            onShowSettings = { showSettings = true }
+            onShowSettings = { showSettings = true },
+            onChatLongPress = onChatLongPress@{ chat ->
+                if (!moderationEnabled) return@onChatLongPress
+                if (chat.nick.equals(nick, ignoreCase = true)) return@onChatLongPress
+                val match = channelUsersMap[chat.nick.lowercase()]
+                pendingModerationTarget = ModerationTarget(chat.nick, match?.mode)
+            }
         )
     }
 
@@ -596,7 +615,10 @@ private fun MainScreen(client: IrcClient) {
         onDismiss = { showUsers = false },
         users = users,
         currentChannel = currentChannel,
-        onModerationAction = { user, action -> handleModerationAction(user, action) }
+        selfNick = nick,
+        moderationEnabled = moderationEnabled,
+        isActionEnabled = actionEnabled,
+        onModerationAction = { target, action -> handleModerationAction(target, action, selfModeSymbol, nick) }
     )
 
     SearchResultsDialog(
@@ -642,6 +664,17 @@ private fun MainScreen(client: IrcClient) {
         fontScalePercent = fontScalePercent,
         onFontScaleChange = { fontScalePercent = it },
         client = client
+    )
+
+    ModerationActionDialog(
+        target = pendingModerationTarget,
+        onDismiss = { pendingModerationTarget = null },
+        isActionEnabled = actionEnabled,
+        onAction = { action ->
+            val target = pendingModerationTarget ?: return@ModerationActionDialog
+            handleModerationAction(target, action, selfModeSymbol, nick)
+            pendingModerationTarget = null
+        }
     )
 }
 
@@ -729,6 +762,7 @@ private fun SessionScreen(
     helpText: String?,
     onShowUsers: () -> Unit,
     onShowSettings: () -> Unit,
+    onChatLongPress: (UiEvent.Chat) -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -809,7 +843,7 @@ private fun SessionScreen(
                         NewMessagesDivider()
                     }
                     when (event) {
-                        is UiEvent.Chat -> ChatRow(event, nick, stripColors, allowBackgrounds, fontScale, compactMode)
+                        is UiEvent.Chat -> ChatRow(event, nick, stripColors, allowBackgrounds, fontScale, compactMode) { onChatLongPress(event) }
                         is UiEvent.Notice -> MetaRow("Notice from ${event.nick ?: "server"}: ${event.text}", stripColors, allowBackgrounds, fontScale, compactMode)
                         is UiEvent.Join -> MetaRow("${event.nick} joined ${event.channel}", fontScale = fontScale, compact = compactMode)
                         is UiEvent.Part -> MetaRow("${event.nick} left ${event.channel}${event.reason?.let { ": $it" } ?: ""}", fontScale = fontScale, compact = compactMode)
@@ -903,10 +937,13 @@ private fun UsersDialog(
     onDismiss: () -> Unit,
     users: List<ChannelUser>,
     currentChannel: String?,
-    onModerationAction: (ChannelUser, ModerationAction) -> Unit = { _, _ -> }
+    selfNick: String,
+    moderationEnabled: Boolean,
+    isActionEnabled: (ModerationAction) -> Boolean = { true },
+    onModerationAction: (ModerationTarget, ModerationAction) -> Unit = { _, _ -> }
 ) {
     if (!show) return
-    val canModerate = currentChannel?.startsWith("#") == true
+    val canModerate = moderationEnabled && currentChannel?.startsWith("#") == true
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
@@ -926,10 +963,46 @@ private fun UsersDialog(
                     itemsIndexed(users) { _, user ->
                         UserRow(
                             user = user,
-                            canModerate = canModerate,
-                            onModerationAction = { action -> onModerationAction(user, action) }
+                            canModerate = canModerate && !user.nick.equals(selfNick, ignoreCase = true),
+                            isActionEnabled = isActionEnabled,
+                            onModerationAction = { action -> onModerationAction(ModerationTarget(user.nick, user.mode), action) }
                         )
                     }
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun ModerationActionDialog(
+    target: ModerationTarget?,
+    onDismiss: () -> Unit,
+    isActionEnabled: (ModerationAction) -> Boolean,
+    onAction: (ModerationAction) -> Unit,
+) {
+    if (target == null) return
+    val anyEnabled = moderationMenuOrder.any(isActionEnabled)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        title = { Text("Moderate ${target.nick}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                moderationMenuOrder.forEach { action ->
+                    TextButton(
+                        onClick = { onAction(action) },
+                        enabled = isActionEnabled(action),
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(moderationActionLabel(action)) }
+                }
+                if (!anyEnabled) {
+                    Text(
+                        "You don't have permission to perform moderation actions.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
                 }
             }
         }
@@ -1414,6 +1487,7 @@ private fun ChatRow(
     allowBackgrounds: Boolean,
     fontScale: Float,
     compact: Boolean,
+    onLongPress: (() -> Unit)? = null,
 ) {
     val isSelf = ev.nick.equals(selfNick, ignoreCase = true)
     val nickColor = remember(ev.nick) { colorForNick(ev.nick) }
@@ -1421,7 +1495,15 @@ private fun ChatRow(
     val nickWidth = if (compact) 48.dp else 64.dp
     val baseStyle = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge
     val nickStyle = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge
-    Row(Modifier.fillMaxWidth().padding(vertical = if (compact) 0.dp else 2.dp)) {
+    var rowModifier = Modifier
+        .fillMaxWidth()
+        .padding(vertical = if (compact) 0.dp else 2.dp)
+    if (onLongPress != null) {
+        rowModifier = rowModifier.pointerInput(ev.nick, ev.text) {
+            detectTapGestures(onLongPress = { onLongPress() })
+        }
+    }
+    Row(rowModifier) {
         Text(
             ev.nick,
             color = if (isSelf) MaterialTheme.colorScheme.primary else nickColor,
@@ -1600,9 +1682,11 @@ private fun colorForNick(nick: String): Color {
 private fun UserRow(
     user: ChannelUser,
     canModerate: Boolean,
+    isActionEnabled: (ModerationAction) -> Boolean,
     onModerationAction: (ModerationAction) -> Unit,
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    val allowActions = canModerate && moderationMenuOrder.any { isActionEnabled(it) }
     val badgeColor = when (user.mode) {
         '~' -> Color(0xFFE91E63)
         '&' -> Color(0xFF9C27B0)
@@ -1615,7 +1699,7 @@ private fun UserRow(
     var rowModifier = Modifier
         .fillMaxWidth()
         .padding(vertical = 2.dp)
-    if (canModerate) {
+    if (allowActions) {
         rowModifier = rowModifier.pointerInput(user.nick) {
             detectTapGestures(onLongPress = { showMenu = true })
         }
@@ -1625,52 +1709,21 @@ private fun UserRow(
             Text(label, color = badgeColor, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
         }
         Text(user.nick, modifier = Modifier.weight(1f))
-        if (canModerate) {
+        if (allowActions) {
             Box {
                 IconButton(onClick = { showMenu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Moderate ${user.nick}") }
                 DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                    DropdownMenuItem(
-                        text = { Text("Op (+o)") },
-                        onClick = {
-                            onModerationAction(ModerationAction.OP)
-                            showMenu = false
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Deop (-o)") },
-                        onClick = {
-                            onModerationAction(ModerationAction.DEOP)
-                            showMenu = false
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Voice (+v)") },
-                        onClick = {
-                            onModerationAction(ModerationAction.VOICE)
-                            showMenu = false
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Devoice (-v)") },
-                        onClick = {
-                            onModerationAction(ModerationAction.DEVOICE)
-                            showMenu = false
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Kick") },
-                        onClick = {
-                            onModerationAction(ModerationAction.KICK)
-                            showMenu = false
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Ban (+b)") },
-                        onClick = {
-                            onModerationAction(ModerationAction.BAN)
-                            showMenu = false
-                        }
-                    )
+                    moderationMenuOrder.forEach { action ->
+                        val enabled = isActionEnabled(action)
+                        DropdownMenuItem(
+                            text = { Text(moderationActionLabel(action)) },
+                            enabled = enabled,
+                            onClick = {
+                                onModerationAction(action)
+                                showMenu = false
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -1684,6 +1737,47 @@ private enum class ModerationAction {
     DEVOICE,
     KICK,
     BAN,
+}
+
+private data class ModerationTarget(val nick: String, val mode: Char?)
+
+private val moderationMenuOrder = listOf(
+    ModerationAction.OP,
+    ModerationAction.DEOP,
+    ModerationAction.VOICE,
+    ModerationAction.DEVOICE,
+    ModerationAction.KICK,
+    ModerationAction.BAN,
+)
+
+private fun moderationPrivilegeRank(mode: Char?): Int = when (mode) {
+    '~' -> 5
+    '&' -> 4
+    '@' -> 3
+    '%' -> 2
+    '+' -> 1
+    else -> 0
+}
+
+private fun canPerformModeration(action: ModerationAction, selfMode: Char?): Boolean {
+    val rank = moderationPrivilegeRank(selfMode)
+    return when (action) {
+        ModerationAction.OP,
+        ModerationAction.DEOP,
+        ModerationAction.KICK,
+        ModerationAction.BAN -> rank >= 3
+        ModerationAction.VOICE,
+        ModerationAction.DEVOICE -> rank >= 2
+    }
+}
+
+private fun moderationActionLabel(action: ModerationAction): String = when (action) {
+    ModerationAction.OP -> "Op (+o)"
+    ModerationAction.DEOP -> "Deop (-o)"
+    ModerationAction.VOICE -> "Voice (+v)"
+    ModerationAction.DEVOICE -> "Devoice (-v)"
+    ModerationAction.KICK -> "Kick"
+    ModerationAction.BAN -> "Ban (+b)"
 }
 
 private fun maybeNotify(
