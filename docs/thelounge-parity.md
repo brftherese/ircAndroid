@@ -7,6 +7,7 @@
 - **UI strategy:** `Mentions.vue` shows a list grouped by buffer, with tap-to-jump and a “Clear” button that empties the store. The Mentions icon displays a badge with unread count.
 - **Android plan:** Mirror the store by maintaining `MutableStateList<HighlightEntry>` in `MainActivity`, backed by DataStore (or simple JSON file) for persistence. Reuse `shouldHighlight` logic so notifications, drawer, and highlight counts share one decision point. Compose UI: floating sheet/modal similar to `SearchResultsDialog` but with mention metadata and jump-to-buffer behavior.
 - **Status:** Landed in `MainActivity.kt` (state + dialog), `ConnectedTopBar.kt` (badge trigger), and `MentionsStore.kt` (JSON persistence capped at 100 entries). Jumping dismisses individual mentions while keeping history until cleared.
+- **Bonus:** Buffer chips now render highlight badges using the persisted mentions list so counts survive restarts until you clear/dismiss the entries, matching The Lounge’s emphasis on unread highlights.
 
 ## Buffer Markers & Unread
 

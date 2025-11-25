@@ -72,6 +72,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -253,6 +254,14 @@ private fun MainScreen(client: IrcClient) {
     var showProfileManager by remember { mutableStateOf(false) }
     var profileEditorState by remember { mutableStateOf<ProfileEditorState?>(null) }
     var profilePendingDelete by remember { mutableStateOf<NetworkProfile?>(null) }
+    val highlightCounts by remember {
+        derivedStateOf {
+            mentions
+                .filter { !it.dismissed }
+                .groupingBy { mentionBufferKey(it) }
+                .eachCount()
+        }
+    }
 
     fun currentConfig(): SavedConfig = SavedConfig(
         server = server,
@@ -711,6 +720,7 @@ private fun MainScreen(client: IrcClient) {
             connected = connected,
             nick = nick,
             linkPreviewStates = linkPreviewStates,
+            highlightCounts = highlightCounts,
             mentionsCount = mentions.count { !it.dismissed },
             onMentions = { showMentions = true },
             compactMode = compactMode,
@@ -1022,6 +1032,7 @@ private fun SessionScreen(
     connected: Boolean,
     nick: String,
     linkPreviewStates: SnapshotStateMap<String, LinkPreviewState>,
+    highlightCounts: Map<String, Int>,
     mentionsCount: Int,
     onMentions: () -> Unit,
     compactMode: Boolean,
@@ -1087,20 +1098,30 @@ private fun SessionScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 val statusUnread = buffers[STATUS_CHANNEL_KEY]?.unread ?: 0
-                BufferChip(label = "Status", unread = statusUnread, selected = currentChannel == null) { onChannelChange(null) }
+                val statusHighlights = highlightCounts[STATUS_CHANNEL_KEY] ?: 0
+                BufferChip(
+                    label = "Status",
+                    unread = statusUnread,
+                    highlight = statusHighlights,
+                    selected = currentChannel == null
+                ) { onChannelChange(null) }
                 joinedChannels.forEach { channel ->
                     val key = channelKeyOrStatus(channel)
+                    val highlights = highlightCounts[key] ?: 0
                     BufferChip(
                         label = channel,
                         unread = buffers[key]?.unread ?: 0,
+                        highlight = highlights,
                         selected = currentChannel?.equals(channel, ignoreCase = true) == true
                     ) { onChannelChange(channel) }
                 }
                 queries.forEach { dm ->
                     val key = channelKeyOrStatus(dm)
+                    val highlights = highlightCounts[key] ?: 0
                     BufferChip(
                         label = dm,
                         unread = buffers[key]?.unread ?: 0,
+                        highlight = highlights,
                         selected = currentChannel?.equals(dm, ignoreCase = true) == true
                     ) { onChannelChange(dm) }
                 }
@@ -1202,14 +1223,44 @@ private fun SessionScreen(
 }
 
 @Composable
-private fun BufferChip(label: String, unread: Int, selected: Boolean, onClick: () -> Unit) {
+private fun BufferChip(label: String, unread: Int, highlight: Int, selected: Boolean, onClick: () -> Unit) {
     AssistChip(
         onClick = onClick,
-        label = { Text(if (unread > 0) "$label ($unread)" else label) },
+        label = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(label)
+                if (unread > 0) {
+                    CountBubble(
+                        value = unread,
+                        background = MaterialTheme.colorScheme.secondaryContainer,
+                        content = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+                if (highlight > 0) {
+                    CountBubble(
+                        value = highlight,
+                        background = MaterialTheme.colorScheme.errorContainer,
+                        content = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+            }
+        },
         colors = AssistChipDefaults.assistChipColors(
             containerColor = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface
         )
     )
+}
+
+@Composable
+private fun CountBubble(value: Int, background: Color, content: Color) {
+    Surface(color = background, shape = MaterialTheme.shapes.small) {
+        Text(
+            value.coerceAtMost(99).toString(),
+            color = content,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+        )
+    }
 }
 
 @Composable
@@ -2621,6 +2672,11 @@ private const val STATUS_CHANNEL_KEY = "_status"
 private const val MAX_MENTIONS = 100
 
 private fun channelKeyOrStatus(name: String?): String = name?.takeIf { it.isNotBlank() }?.lowercase() ?: STATUS_CHANNEL_KEY
+
+private fun mentionBufferKey(entry: MentionEntry): String = when (entry.bufferKind) {
+    MentionBufferKind.STATUS -> STATUS_CHANNEL_KEY
+    MentionBufferKind.CHANNEL, MentionBufferKind.QUERY -> channelKeyOrStatus(entry.bufferName)
+}
 
 private fun eventChannelName(event: UiEvent, selfNick: String): String? = when (event) {
     is UiEvent.Chat -> when {
