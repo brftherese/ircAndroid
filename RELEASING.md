@@ -121,3 +121,32 @@ adb logcat -s IrcClient AndroidRuntime
 
 - Backup `keystore/ircclient.keystore` securely; losing it prevents updates to the app
 - Do not commit the keystore or passwords; `local.properties` is git-ignored
+
+## GitHub Actions automation
+
+We ship artifacts automatically via `.github/workflows/release.yml`.
+
+### Required secrets
+
+Add the following repository secrets so the workflow can sign builds:
+
+- `RELEASE_KEYSTORE_B64`: Base64-encoded contents of `keystore/ircclient.keystore`
+- `RELEASE_STORE_PASSWORD`: Password for the keystore
+- `RELEASE_KEY_ALIAS`: Alias defined inside the keystore
+- `RELEASE_KEY_PASSWORD`: Password for the alias
+
+### Triggering a release
+
+1. Bump `versionCode`/`versionName`, update changelog/docs, and commit.
+2. Either push a tag (`git tag v1.0.3 && git push origin main --tags`) or run the workflow manually.
+
+- GitHub → Actions → **Release APK** → **Run workflow** → enter tag (e.g., `v1.0.3`).
+
+Then the workflow will:
+
+- Set up JDK 21 + Android SDK
+- Recreate `local.properties` using the secrets and decode the keystore
+- Run `./gradlew assembleRelease`
+- Upload the APK and SHA256 checksum as workflow artifacts and as GitHub release assets (creating/updating the release for the tag)
+
+Use `workflow_dispatch` when you want to rebuild an existing tag (e.g., after fixing secrets) without pushing a new commit.
