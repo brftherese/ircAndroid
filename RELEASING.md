@@ -4,7 +4,13 @@ This guide covers building a signed release APK/App Bundle and publishing to Goo
 
 ## Prereqs
 
-- Java 17+ and Android SDK installed
+- Temurin/OpenJDK 21 with `jlink` available (the GitHub Actions workflow uses Temurin 21). Set `JAVA_HOME` accordingly, e.g.:
+
+```bash
+export JAVA_HOME="$HOME/.jdks/jdk-21.0.9+10"
+```
+
+- Android SDK installed (`$HOME/Android/Sdk`) and `platform-tools` on your PATH
 - Keystore at `keystore/ircclient.keystore` with passwords in `local.properties`
 - App version updated in `app/build.gradle.kts` (bump `versionCode`, adjust `versionName`)
 
@@ -13,14 +19,14 @@ This guide covers building a signed release APK/App Bundle and publishing to Goo
 - Release APK:
 
 ```bash
-./gradlew assembleRelease
+JAVA_HOME="$HOME/.jdks/jdk-21.0.9+10" ./gradlew assembleRelease
 # Output: app/build/outputs/apk/release/app-release.apk
 ```
 
 - Play App Bundle (recommended for Play Console):
 
 ```bash
-./gradlew bundleRelease
+JAVA_HOME="$HOME/.jdks/jdk-21.0.9+10" ./gradlew bundleRelease
 # Output: app/build/outputs/bundle/release/app-release.aab
 ```
 

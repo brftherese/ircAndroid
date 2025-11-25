@@ -49,15 +49,16 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -67,7 +68,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -107,6 +107,8 @@ import com.example.ircclient.loadMentions
 import com.example.ircclient.loadNetworkProfiles
 import com.example.ircclient.saveMentions
 import com.example.ircclient.saveNetworkProfiles
+import com.example.ircclient.persistence.ChatDatabase
+import com.example.ircclient.persistence.ScrollbackStore
 import com.example.ircclient.ui.ConnectedTopBar
 import com.example.ircclient.ui.theme.AppTheme
 import kotlinx.coroutines.flow.collectLatest
@@ -118,6 +120,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var client: IrcClient
     private lateinit var connectivityManager: ConnectivityManager
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private lateinit var scrollbackStore: ScrollbackStore
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -126,6 +129,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         client = IrcClient(lifecycleScope)
         connectivityManager = getSystemService(ConnectivityManager::class.java)
+        scrollbackStore = ScrollbackStore(ChatDatabase.getInstance(applicationContext).bufferEventDao())
         NotificationHelper.init(this)
         requestNotificationPermissionIfNeeded()
         registerNetworkCallback()
@@ -133,7 +137,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             AppTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    MainScreen(client = client)
+                    MainScreen(client = client, scrollbackStore = scrollbackStore)
                 }
             }
         }
@@ -188,7 +192,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun MainScreen(client: IrcClient) {
+private fun MainScreen(client: IrcClient, scrollbackStore: ScrollbackStore) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val connected by client.connected.collectAsState(initial = false)
@@ -260,6 +264,23 @@ private fun MainScreen(client: IrcClient) {
                 .filter { !it.dismissed }
                 .groupingBy { mentionBufferKey(it) }
                 .eachCount()
+        }
+    }
+
+    LaunchedEffect(scrollbackStore) {
+        val cached = scrollbackStore.loadAll(SCROLLBACK_SEED_LIMIT)
+        cached.forEach { (bufferKey, events) ->
+            if (events.isEmpty()) return@forEach
+            val list = channelEvents.getOrPut(bufferKey) { mutableStateListOf() }
+            if (list.isNotEmpty()) return@forEach
+            list.addAll(events)
+            val inferredName = bufferKey.takeUnless { it == STATUS_CHANNEL_KEY }
+            val type = bufferTypeForKey(bufferKey)
+            ensureBufferMeta(buffers, inferredName, type)
+            if (type == BufferType.QUERY && !inferredName.isNullOrBlank() && queries.none { it.equals(inferredName, ignoreCase = true) }) {
+                queries.add(inferredName)
+                queries.sortBy { it.lowercase() }
+            }
         }
     }
 
@@ -419,6 +440,7 @@ private fun MainScreen(client: IrcClient) {
         val meta = ensureBufferMeta(buffers, channelName, bufferType)
         val insertIndex = list.lastIndex + 1
         list.add(event)
+        scope.launch { scrollbackStore.append(key, event) }
 
         val activeKey = channelKeyOrStatus(currentChannel)
         if (activeKey != key) {
@@ -493,8 +515,7 @@ private fun MainScreen(client: IrcClient) {
     }
 
     fun emitStatus(message: String) {
-        val status = channelEvents.getOrPut(STATUS_CHANNEL_KEY) { mutableStateListOf() }
-        status.add(UiEvent.System(message, time = System.currentTimeMillis()))
+        appendEvent(UiEvent.System(message, time = System.currentTimeMillis()))
     }
 
     fun handleModerationAction(target: ModerationTarget, action: ModerationAction, selfMode: Char?, selfNick: String) {
@@ -582,7 +603,8 @@ private fun MainScreen(client: IrcClient) {
             },
             onOpenQuery = { target ->
                 if (target.isNotBlank()) currentChannel = target
-            }
+            },
+            emitStatus = ::emitStatus
         )
         outgoing = TextFieldValue("")
     }
@@ -1588,13 +1610,10 @@ private fun sendMessageOrCommand(
     ignoreNicks: String,
     onIgnoreChange: (String) -> Unit,
     onOpenQuery: (String) -> Unit,
+    emitStatus: (String) -> Unit,
 ) {
     val trimmed = text.trim()
     if (trimmed.isBlank()) return
-    fun emitStatusMessage(message: String) {
-        val status = channelEvents.getOrPut(STATUS_CHANNEL_KEY) { mutableStateListOf() }
-        status.add(UiEvent.System(message, time = System.currentTimeMillis()))
-    }
     val histKey = activeChannel.ifBlank { "global" }
     val history = inputHistories.getOrPut(histKey) { mutableListOf("") }
     if (history.isEmpty()) history.add("")
@@ -1609,9 +1628,9 @@ private fun sendMessageOrCommand(
         val nickArg = trimmed.removePrefix("/whois ").trim()
         if (nickArg.isNotEmpty()) {
             client.sendRaw("WHOIS ${nickArg}")
-            emitStatusMessage("Requesting WHOIS for ${nickArg}")
+            emitStatus("Requesting WHOIS for ${nickArg}")
         } else {
-            emitStatusMessage("Usage: /whois <nick>")
+            emitStatus("Usage: /whois <nick>")
         }
         return
     }
@@ -1663,12 +1682,12 @@ private fun sendMessageOrCommand(
     if (trimmed.startsWith("/query")) {
         val rest = trimmed.removePrefix("/query").trim()
         if (rest.isBlank()) {
-            emitStatusMessage("Usage: /query <nick> [message]")
+            emitStatus("Usage: /query <nick> [message]")
             return
         }
         val parts = rest.split(' ', limit = 2)
         val target = parts.getOrNull(0)?.takeIf { it.isNotBlank() } ?: run {
-            emitStatusMessage("Usage: /query <nick> [message]")
+            emitStatus("Usage: /query <nick> [message]")
             return
         }
         val initialMessage = parts.getOrNull(1)?.trim().orEmpty()
@@ -1696,34 +1715,34 @@ private fun sendMessageOrCommand(
         }
         if (rest.isBlank() || rest.equals("list", ignoreCase = true)) {
             val summary = if (current.isEmpty()) "Ignore list is empty" else "Ignoring: ${current.sorted().joinToString(", ")}"
-            emitStatusMessage(summary)
+            emitStatus(summary)
         } else {
             fun addNick(rawNick: String) {
                 val normalized = normalizeNick(rawNick)
                 if (normalized.isEmpty()) {
-                    emitStatusMessage("Usage: /ignore +nick")
+                    emitStatus("Usage: /ignore +nick")
                     return
                 }
                 val added = current.add(normalized)
                 if (added) {
                     saveIgnores()
-                    emitStatusMessage("Ignoring ${normalized}")
+                    emitStatus("Ignoring ${normalized}")
                 } else {
-                    emitStatusMessage("${normalized} already ignored")
+                    emitStatus("${normalized} already ignored")
                 }
             }
             fun removeNick(rawNick: String) {
                 val normalized = normalizeNick(rawNick)
                 if (normalized.isEmpty()) {
-                    emitStatusMessage("Usage: /ignore -nick")
+                    emitStatus("Usage: /ignore -nick")
                     return
                 }
                 val removed = current.remove(normalized)
                 if (removed) {
                     saveIgnores()
-                    emitStatusMessage("No longer ignoring ${normalized}")
+                    emitStatus("No longer ignoring ${normalized}")
                 } else {
-                    emitStatusMessage("${normalized} was not ignored")
+                    emitStatus("${normalized} was not ignored")
                 }
             }
             when {
@@ -1734,15 +1753,15 @@ private fun sendMessageOrCommand(
                 else -> {
                     val normalized = normalizeNick(rest)
                     if (normalized.isEmpty()) {
-                        emitStatusMessage("Usage: /ignore [+|-]nick | list")
+                        emitStatus("Usage: /ignore [+|-]nick | list")
                     } else if (current.contains(normalized)) {
                         current.remove(normalized)
                         saveIgnores()
-                        emitStatusMessage("No longer ignoring ${normalized}")
+                        emitStatus("No longer ignoring ${normalized}")
                     } else {
                         current.add(normalized)
                         saveIgnores()
-                        emitStatusMessage("Ignoring ${normalized}")
+                        emitStatus("Ignoring ${normalized}")
                     }
                 }
             }
@@ -1755,7 +1774,7 @@ private fun sendMessageOrCommand(
         val target = parts.getOrNull(0)?.takeIf { it.isNotBlank() }
         val body = parts.getOrNull(1)?.trim().orEmpty()
         if (target == null || body.isEmpty()) {
-            emitStatusMessage("Usage: /notice <target> <text>")
+            emitStatus("Usage: /notice <target> <text>")
         } else {
             client.sendRaw("NOTICE ${target} :${body}")
             if (!target.startsWith("#") && queries.none { it.equals(target, ignoreCase = true) }) {
@@ -1777,10 +1796,10 @@ private fun sendMessageOrCommand(
         val explicitChannel = parts.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() }
         val candidateChannel = explicitChannel ?: activeChannel.takeIf { it.startsWith("#") }
         if (targetNick == null || candidateChannel.isNullOrBlank()) {
-            emitStatusMessage("Usage: /invite <nick> [#channel]")
+            emitStatus("Usage: /invite <nick> [#channel]")
         } else {
             client.sendRaw("INVITE ${targetNick} ${candidateChannel}")
-            emitStatusMessage("Invited ${targetNick} to ${candidateChannel}")
+            emitStatus("Invited ${targetNick} to ${candidateChannel}")
         }
         return
     }
@@ -1788,10 +1807,10 @@ private fun sendMessageOrCommand(
         val message = trimmed.removePrefix("/away").trim()
         if (message.isEmpty()) {
             client.sendRaw("AWAY")
-            emitStatusMessage("Cleared away status")
+            emitStatus("Cleared away status")
         } else {
             client.sendRaw("AWAY :${message}")
-            emitStatusMessage("Set away: ${message}")
+            emitStatus("Set away: ${message}")
         }
         return
     }
@@ -1808,15 +1827,15 @@ private fun sendMessageOrCommand(
         }
         val resolvedChannel = channelArg?.takeIf { it.isNotBlank() } ?: activeChannel.takeIf { it.startsWith("#") }
         if (resolvedChannel.isNullOrBlank()) {
-            emitStatusMessage("Join a channel or specify /topic #channel <text>")
+            emitStatus("Join a channel or specify /topic #channel <text>")
             return
         }
         if (topicText.isNullOrBlank()) {
             client.sendRaw("TOPIC ${resolvedChannel}")
-            emitStatusMessage("Requested topic for ${resolvedChannel}")
+            emitStatus("Requested topic for ${resolvedChannel}")
         } else {
             client.sendRaw("TOPIC ${resolvedChannel} :${topicText}")
-            emitStatusMessage("Setting topic for ${resolvedChannel}")
+            emitStatus("Setting topic for ${resolvedChannel}")
         }
         return
     }
@@ -2670,6 +2689,7 @@ private fun quietHoursWindowLabel(start: Int, end: Int): String {
 
 private const val STATUS_CHANNEL_KEY = "_status"
 private const val MAX_MENTIONS = 100
+private const val SCROLLBACK_SEED_LIMIT = 500
 
 private fun channelKeyOrStatus(name: String?): String = name?.takeIf { it.isNotBlank() }?.lowercase() ?: STATUS_CHANNEL_KEY
 
@@ -2699,6 +2719,12 @@ private fun eventChannelName(event: UiEvent, selfNick: String): String? = when (
     is UiEvent.Topic -> event.channel
     is UiEvent.System -> event.target
     else -> null
+}
+
+private fun bufferTypeForKey(key: String): BufferType = when {
+    key == STATUS_CHANNEL_KEY -> BufferType.STATUS
+    key.startsWith("#") -> BufferType.CHANNEL
+    else -> BufferType.QUERY
 }
 
 private fun handleNickRename(

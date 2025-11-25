@@ -8,6 +8,7 @@ Last updated: 2025-11-25
 
 - `app/src/main/java/com/example/ircclient/MainActivity.kt` + Compose UI: multi-buffer chat, sidebar, mentions drawer, slash commands, moderation menus, search, quiet hours, notifications (summarized in `README.md`).
 - Persistence uses DataStore helpers in `Prefs.kt`, `MentionsStore.kt`, and `NetworkProfilesStore.kt` for settings, highlights, and saved network profiles.
+- Local scrollback mirror powered by Room (`ChatDatabase`, `ScrollbackStore`) keeps per-buffer history with 30-day/5k-row caps between launches.
 - Link previews implemented client-side in `LinkPreview.kt` with Compose cards rendered in chat rows.
 - Notifications + highlight badges via `NotificationHelper.kt`, `AppForeground.kt`, and the persisted mentions store.
 - Saved network profiles selectable in the connection form (profile picker Compose UI).
@@ -29,7 +30,7 @@ Last updated: 2025-11-25
 | Link previews | `client/js/plugins/preview.js`, `client/components/Message.vue` | ✅ Implemented (`LinkPreview.kt`, Compose cards) | Currently first-URL only; lacks caching/policy toggles. |
 | Multi-network profiles | `client/components/NetworkForm.vue` + server connection handling | ⚠️ Partial (`NetworkProfilesStore.kt`) | Profiles saved/switchable, but only one active network connection at a time; no simultaneous multi-network buffers. |
 | Always-on host & auth | `server/server.ts`, `server/clientManager.ts`, plugins `auth/*` | ❌ Missing | Android is a foreground-only client; no daemon, account auth, or background resume. |
-| Server-side history/logging | `server/plugins/messageStorage/*`, `storageCleaner.ts` | ❌ Missing | Need local database/cache if we want offline history persistence. |
+| Server-side history/logging | `server/plugins/messageStorage/*`, `storageCleaner.ts` | ⚠️ Partial | Local Room cache mirrors TL scrollback behavior for 30 days, but there is no multi-device sync or true server-side storage yet. |
 | Web push / offline alerts | `server/plugins/webpush.ts`, client `Windows/Notifications.vue` | ❌ Missing | Android has local notifications only; no push relay or sync to other devices. |
 | File uploads / media proxy | `server/plugins/uploader.ts`, `client/components/ChatInput.vue` | ❌ Missing | No upload UI, storage, or proxy handling in Android app. |
 | Prefetch policies & caching | `defaults/config.js` (`prefetch*` keys), `server/plugins/storage.ts` | ⚠️ Partial | Client fetches previews without cached storage or user-configurable caps. |
@@ -84,11 +85,11 @@ Last updated: 2025-11-25
 
 | ID | Item | Status | Notes |
 | --- | --- | --- | --- |
-| TL-01 | Persist scrollback locally (Room/SQLDelight) to mirror `messageStorage` behavior | Todo | Needed for offline resume + parity with Lounge history/log retention. |
+| TL-01 | Persist scrollback locally (Room/SQLDelight) to mirror `messageStorage` behavior | ✅ Done | Room-based `ScrollbackStore` seeds buffers on launch, persists every `UiEvent`, and prunes to 30 days / 5k rows per buffer. |
 | TL-02 | Multi-network simultaneous sessions (one per saved profile) | Todo | Requires refactoring `IrcClient.kt` to handle multiple sockets and UI tabs per network. |
 | TL-03 | Configurable link preview policy (enable/disable, size/time caps) | Todo | Hook settings screen into `LinkPreview.kt`, align with `defaults/config.js` controls. |
 | TL-04 | File upload + share-sheet integration | Todo | Needs API contract with Lounge uploader plugin; consider fallback if endpoint unavailable. |
-| TL-05 | Push/relay notifications | Todo | Investigate bridging to Lounge `webpush` plugin or using FCM for highlights when app closed. |
+| TL-05 | Push/relay notifications | In progress | Plan: integrate FCM token registration + relay endpoint so Lounge `webpush` plugin can fan-out highlight payloads even when app is backgrounded. |
 | TL-06 | Theme presets + appearance settings | Todo | Compose Material 3 dynamic colors + manual overrides akin to `client/components/Settings/Appearance.vue`. |
 | TL-07 | Advanced connection options (WEBIRC, rejectUnauthorized, reconnect policy) | Todo | UI work + validation referencing `defaults/config.js`. |
 | TL-08 | In-app documentation + onboarding | In progress | Convert README highlights into an in-app help sheet; keep parity doc updated. |
