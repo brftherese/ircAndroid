@@ -64,6 +64,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -76,6 +77,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -231,6 +233,7 @@ private fun MainScreen(client: IrcClient) {
     val channelUsersMap = remember(users) { users.associateBy { it.nick.lowercase() } }
     val selfModeSymbol = remember(channelUsersMap, nick) { channelUsersMap[nick.lowercase()]?.mode }
     var pendingModerationTarget by remember { mutableStateOf<ModerationTarget?>(null) }
+    val linkPreviewStates = remember { mutableStateMapOf<String, LinkPreviewState>() }
 
     val listState = rememberLazyListState()
     val bufferScroll = rememberScrollState()
@@ -605,6 +608,7 @@ private fun MainScreen(client: IrcClient) {
         SessionScreen(
             connected = connected,
             nick = nick,
+            linkPreviewStates = linkPreviewStates,
             mentionsCount = mentions.count { !it.dismissed },
             onMentions = { showMentions = true },
             compactMode = compactMode,
@@ -813,6 +817,7 @@ private fun ConnectionForm(
 private fun SessionScreen(
     connected: Boolean,
     nick: String,
+    linkPreviewStates: SnapshotStateMap<String, LinkPreviewState>,
     mentionsCount: Int,
     onMentions: () -> Unit,
     compactMode: Boolean,
@@ -933,7 +938,7 @@ private fun SessionScreen(
                         NewMessagesDivider()
                     }
                     when (event) {
-                        is UiEvent.Chat -> ChatRow(event, nick, stripColors, allowBackgrounds, fontScale, compactMode) { onChatLongPress(event) }
+                        is UiEvent.Chat -> ChatRow(event, nick, stripColors, allowBackgrounds, fontScale, compactMode, linkPreviewStates) { onChatLongPress(event) }
                         is UiEvent.Notice -> MetaRow("Notice from ${event.nick ?: "server"}: ${event.text}", stripColors, allowBackgrounds, fontScale, compactMode)
                         is UiEvent.Join -> MetaRow("${event.nick} joined ${event.channel}", fontScale = fontScale, compact = compactMode)
                         is UiEvent.Part -> MetaRow("${event.nick} left ${event.channel}${event.reason?.let { ": $it" } ?: ""}", fontScale = fontScale, compact = compactMode)
@@ -1635,6 +1640,7 @@ private fun ChatRow(
     allowBackgrounds: Boolean,
     fontScale: Float,
     compact: Boolean,
+    linkPreviewStates: SnapshotStateMap<String, LinkPreviewState>,
     onLongPress: (() -> Unit)? = null,
 ) {
     val isSelf = ev.nick.equals(selfNick, ignoreCase = true)
@@ -1662,6 +1668,10 @@ private fun ChatRow(
         Column(Modifier.weight(1f)) {
             val annotated = remember(ev.text, stripColors, allowBackgrounds) { formatIrcAnnotated(ev.text, stripColors = stripColors, allowBackgrounds = allowBackgrounds) }
             LinkableAnnotatedText(annotated = annotated, style = baseStyle.copy(fontSize = baseStyle.fontSize * fontScale))
+            val firstUrl = remember(ev.text) { extractFirstUrl(ev.text) }
+            if (firstUrl != null) {
+                LinkPreviewCard(firstUrl, linkPreviewStates)
+            }
         }
         Text(time, style = MaterialTheme.typography.labelSmall, color = Color.Gray, modifier = Modifier.padding(start = 8.dp))
     }
@@ -1715,6 +1725,110 @@ private fun LinkableAnnotatedText(
 }
 
 @Composable
+private fun LinkPreviewCard(url: String, states: SnapshotStateMap<String, LinkPreviewState>) {
+    val state = states[url]
+    val status = state?.status ?: PreviewStatus.Idle
+
+    LaunchedEffect(url, status) {
+        val now = System.currentTimeMillis()
+        val current = states[url]
+        val shouldFetch = when {
+            current == null -> true
+            current.status == PreviewStatus.Idle -> true
+            current.status == PreviewStatus.Failed && now - current.lastAttempt > PREVIEW_RETRY_MS -> true
+            else -> false
+        }
+        if (shouldFetch) {
+            states[url] = LinkPreviewState(status = PreviewStatus.Loading, lastAttempt = now)
+            val preview = fetchLinkPreview(url)
+            val refreshed = if (preview != null) {
+                LinkPreviewState(status = PreviewStatus.Success, preview = preview, lastAttempt = System.currentTimeMillis())
+            } else {
+                LinkPreviewState(status = PreviewStatus.Failed, preview = null, lastAttempt = System.currentTimeMillis())
+            }
+            states[url] = refreshed
+        }
+    }
+
+    when (status) {
+        PreviewStatus.Success -> state?.preview?.let { PreviewContentCard(it) }
+        PreviewStatus.Loading -> PreviewLoadingCard()
+        PreviewStatus.Failed -> PreviewErrorCard { states[url] = LinkPreviewState(status = PreviewStatus.Idle) }
+        PreviewStatus.Idle -> Unit
+    }
+}
+
+@Composable
+private fun PreviewContentCard(preview: LinkPreview) {
+    val context = LocalContext.current
+    val host = remember(preview.url) { Uri.parse(preview.url).host ?: preview.url }
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        tonalElevation = 2.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp)
+            .clickable {
+                runCatching {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(preview.url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+            }
+    ) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(host, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+            preview.title?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            preview.description?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
+            preview.siteName?.let {
+                Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PreviewLoadingCard() {
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        tonalElevation = 1.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            LinearProgressIndicator(modifier = Modifier.weight(1f))
+            Text("Fetching preview…", style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
+
+@Composable
+private fun PreviewErrorCard(onRetry: () -> Unit) {
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        tonalElevation = 1.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Preview unavailable", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelSmall)
+            TextButton(onClick = onRetry) { Text("Retry") }
+        }
+    }
+}
+
+@Composable
 private fun DayDivider(time: Long) {
     val label = remember(time) { DateFormat.format("EEE, MMM d, yyyy", time).toString() }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
@@ -1731,6 +1845,33 @@ private fun NewMessagesDivider() {
             Text("New messages", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.padding(vertical = 2.dp, horizontal = 8.dp))
         }
     }
+}
+
+private data class LinkPreviewState(
+    val status: PreviewStatus = PreviewStatus.Idle,
+    val preview: LinkPreview? = null,
+    val lastAttempt: Long = 0L,
+)
+
+private enum class PreviewStatus { Idle, Loading, Success, Failed }
+
+private const val PREVIEW_RETRY_MS = 5 * 60 * 1000L
+
+private val URL_REGEX = Regex("https?://[\\w._~:/?#@!$&'()*+,;=%-]+", RegexOption.IGNORE_CASE)
+private val URL_TRAILING_CHARS = setOf('.', ',', ')', ']', '}', '>', '"', '\'', ':', ';', '…')
+
+private fun extractFirstUrl(text: String): String? {
+    val match = URL_REGEX.find(text) ?: return null
+    val sanitized = sanitizeUrlCandidate(match.value)
+    return sanitized.takeIf { it.startsWith("http://", ignoreCase = true) || it.startsWith("https://", ignoreCase = true) }
+}
+
+private fun sanitizeUrlCandidate(candidate: String): String {
+    var end = candidate.length
+    while (end > 0 && URL_TRAILING_CHARS.contains(candidate[end - 1])) {
+        end -= 1
+    }
+    return candidate.substring(0, end)
 }
 
 @Composable

@@ -21,6 +21,7 @@
 - **Upstream reference:** `client/js/plugins/preview.js`, `client/components/Message.vue`.
 - **Store strategy:** The Lounge server prefetches metadata and emits `msg.previews`. Client caches them per message.
 - **Android plan:** Either implement a lightweight HTTP prefetch in the app (respecting size limits) or rely on a bridge API. Mirror their throttling and content-type filtering to avoid loading unsafe content.
+- **Status:** Prototype landed with `LinkPreview.kt` (size/time-limited HTML fetcher) and Compose cards in `ChatRow`. First URL in each message renders a preview with retry handling, mirroring The Lounge’s preview cards without server assistance.
 
 ## Multi-Network Profiles
 
