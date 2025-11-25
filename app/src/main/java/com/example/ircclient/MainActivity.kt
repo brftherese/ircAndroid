@@ -238,6 +238,7 @@ private fun MainScreen(client: IrcClient) {
     val actionEnabled = remember(selfModeSymbol) { { action: ModerationAction -> canPerformModeration(action, selfModeSymbol) } }
     val mentions = remember { mutableStateListOf<MentionEntry>() }
     var showMentions by remember { mutableStateOf(false) }
+    var pendingScrollTime by remember { mutableStateOf<Long?>(null) }
 
     fun persistConfig() {
         val cfg = SavedConfig(
@@ -266,6 +267,15 @@ private fun MainScreen(client: IrcClient) {
     
     fun persistMentionsState() {
         scope.launch { saveMentions(context, mentions.take(MAX_MENTIONS)) }
+    }
+    
+    fun markBufferRead(channelName: String?) {
+        val bufferKey = channelKeyOrStatus(channelName)
+        val events = channelEvents[bufferKey]
+        val readKey = channelName ?: STATUS_CHANNEL_KEY
+        val lastTimestamp = events?.lastOrNull()?.time ?: System.currentTimeMillis()
+        lastRead[readKey] = lastTimestamp
+        buffers[bufferKey]?.resetCounts()
     }
 
     fun resetSessionState() {
@@ -504,11 +514,26 @@ private fun MainScreen(client: IrcClient) {
     val activeKey = channelKeyOrStatus(currentChannel)
     val activeEvents = channelEvents[activeKey] ?: emptyList()
 
-    LaunchedEffect(activeKey, activeEvents.size) {
-        if (activeEvents.isNotEmpty()) {
+    LaunchedEffect(activeKey, activeEvents.size, pendingScrollTime) {
+        val channelName = currentChannel
+        if (activeEvents.isEmpty()) {
+            markBufferRead(channelName)
+            pendingScrollTime = null
+            return@LaunchedEffect
+        }
+        val targetTime = pendingScrollTime
+        if (targetTime != null) {
+            val targetIndex = activeEvents.indexOfFirst { it.time == targetTime }
+            if (targetIndex >= 0) {
+                listState.scrollToItem(targetIndex)
+            } else {
+                listState.animateScrollToItem(activeEvents.lastIndex)
+            }
+            pendingScrollTime = null
+        } else {
             listState.animateScrollToItem(activeEvents.lastIndex)
         }
-        buffers[activeKey]?.resetCounts()
+        markBufferRead(channelName)
     }
 
     LaunchedEffect(outgoing.text, outgoing.selection, users) {
@@ -671,6 +696,7 @@ private fun MainScreen(client: IrcClient) {
         },
         onJump = { entry ->
             entry.dismissed = true
+            pendingScrollTime = entry.time
             when (entry.bufferKind) {
                 MentionBufferKind.CHANNEL -> currentChannel = entry.bufferName
                 MentionBufferKind.QUERY -> currentChannel = entry.bufferName

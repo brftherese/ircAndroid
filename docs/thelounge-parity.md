@@ -14,6 +14,7 @@
 - **Store strategy:** The Lounge tracks `buffer.highlight`, `buffer.unread`, and `buffer.marker` (timestamp/line pointer). They reset counts when the buffer becomes active and insert a “new messages” divider where marker crosses.
 - **UI strategy:** Markers render as `div.new-messages` segments; highlight counts appear next to buffer names.
 - **Android plan:** Generalize our `BufferMeta.firstUnreadTime` into a structured marker object (timestamp + event index). When receiving chat events, set marker if buffer inactive; on activation, clear counts and marker. Use the same marker info to render `NewMessagesDivider` and to align mention jumps to the exact event.
+- **Status:** `pendingScrollTime` plus `lastRead` bookkeeping now ensure mention jumps land on the exact event, list state scrolls to the stored index, and buffer counts/markers reset immediately whenever a buffer becomes active.
 
 ## Rich Link Previews / Prefetch
 
