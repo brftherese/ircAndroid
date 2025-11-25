@@ -10,6 +10,7 @@ An offline-first Android IRC client written in Kotlin with Jetpack Compose. It n
 - NickServ helpers, slash commands (`/join`, `/msg`, `/me`, `/raw`, `/search`, etc.), and smart autocomplete suggestions
 - Highlight detection with quiet hours, mute controls, and local notifications (Android 13+ runtime permission aware)
 - Rich link previews for HTTP/HTTPS URLs using a safe, size-limited client-side fetcher inspired by The Lounge preview plugin
+- Multiple saved network profiles so you can jump between servers/accounts without retyping credentials
 - Contextual moderation menus: long-press members or chat messages to op/deop/voice/kick/ban when your channel mode allows it
 - Per-channel search, message history, day dividers, and “new messages” markers
 - Persistent settings via DataStore plus optional compact layout and adjustable font scaling
@@ -48,6 +49,7 @@ Then install the APK from `app/build/outputs/apk/debug/` onto a device.
 2. Toggle TLS, pick a nick/user/real name, and configure the primary/auto-join channels.
 3. (Optional) Add SASL credentials, highlight/ignore lists, and quiet hours in **Advanced settings**.
 4. Tap **Connect**. The sidebar shows Status + joined channels/direct messages with unread badges.
+5. Use the **Network profile** picker to switch between saved configurations or open the profile manager to add/rename/delete entries. Each profile remembers all of the form + settings dialog values.
 
 ### Chatting & Commands
 

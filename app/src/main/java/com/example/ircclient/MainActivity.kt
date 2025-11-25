@@ -42,6 +42,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -98,8 +101,11 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.ircclient.MentionBufferKind
 import com.example.ircclient.MentionEntry
+import com.example.ircclient.NetworkProfile
 import com.example.ircclient.loadMentions
+import com.example.ircclient.loadNetworkProfiles
 import com.example.ircclient.saveMentions
+import com.example.ircclient.saveNetworkProfiles
 import com.example.ircclient.ui.ConnectedTopBar
 import com.example.ircclient.ui.theme.AppTheme
 import kotlinx.coroutines.flow.collectLatest
@@ -242,30 +248,126 @@ private fun MainScreen(client: IrcClient) {
     val mentions = remember { mutableStateListOf<MentionEntry>() }
     var showMentions by remember { mutableStateOf(false) }
     var pendingScrollTime by remember { mutableStateOf<Long?>(null) }
+    val networkProfiles = remember { mutableStateListOf<NetworkProfile>() }
+    var activeProfileId by remember { mutableStateOf<String?>(null) }
+    var showProfileManager by remember { mutableStateOf(false) }
+    var profileEditorState by remember { mutableStateOf<ProfileEditorState?>(null) }
+    var profilePendingDelete by remember { mutableStateOf<NetworkProfile?>(null) }
+
+    fun currentConfig(): SavedConfig = SavedConfig(
+        server = server,
+        port = portInput.toIntOrNull() ?: (if (useTls) 6697 else 6667),
+        tls = useTls,
+        nick = nick,
+        user = user,
+        realName = realName,
+        channel = primaryChannel,
+        channels = extraChannels,
+        highlights = highlights,
+        highlightExceptions = highlightExceptions,
+        ignoreNicks = ignoreNicks,
+        saslAccount = saslAccount,
+        saslPassword = saslPassword,
+        stripColors = stripColors,
+        allowBackgrounds = allowBackgrounds,
+        fontScalePercent = fontScalePercent,
+        quietHoursEnabled = quietHoursEnabled,
+        quietHoursStart = quietHoursStart,
+        quietHoursEnd = quietHoursEnd,
+    )
+
+    fun applyConfig(cfg: SavedConfig) {
+        server = cfg.server
+        portInput = cfg.port.toString()
+        useTls = cfg.tls
+        nick = cfg.nick
+        user = cfg.user
+        realName = cfg.realName
+        primaryChannel = cfg.channel
+        extraChannels = cfg.channels
+        highlights = cfg.highlights
+        highlightExceptions = cfg.highlightExceptions
+        ignoreNicks = cfg.ignoreNicks
+        saslAccount = cfg.saslAccount
+        saslPassword = cfg.saslPassword
+        stripColors = cfg.stripColors
+        allowBackgrounds = cfg.allowBackgrounds
+        fontScalePercent = cfg.fontScalePercent
+        quietHoursEnabled = cfg.quietHoursEnabled
+        quietHoursStart = cfg.quietHoursStart
+        quietHoursEnd = cfg.quietHoursEnd
+    }
+
+    fun persistProfilesState(activeId: String? = activeProfileId) {
+        scope.launch {
+            saveNetworkProfiles(context, networkProfiles.toList(), activeId)
+        }
+    }
+
+    fun updateActiveProfileConfig(cfg: SavedConfig) {
+        val idx = networkProfiles.indexOfFirst { it.id == activeProfileId }
+        if (idx >= 0) {
+            val existing = networkProfiles[idx]
+            if (existing.config != cfg) {
+                networkProfiles[idx] = existing.copy(config = cfg)
+            }
+        }
+        if (networkProfiles.isNotEmpty()) {
+            persistProfilesState()
+        }
+    }
 
     fun persistConfig() {
-        val cfg = SavedConfig(
-            server = server,
-            port = portInput.toIntOrNull() ?: if (useTls) 6697 else 6667,
-            tls = useTls,
-            nick = nick,
-            user = user,
-            realName = realName,
-            channel = primaryChannel,
-            channels = extraChannels,
-            highlights = highlights,
-            highlightExceptions = highlightExceptions,
-            ignoreNicks = ignoreNicks,
-            saslAccount = saslAccount,
-            saslPassword = saslPassword,
-            stripColors = stripColors,
-            allowBackgrounds = allowBackgrounds,
-            fontScalePercent = fontScalePercent,
-            quietHoursEnabled = quietHoursEnabled,
-            quietHoursStart = quietHoursStart,
-            quietHoursEnd = quietHoursEnd,
-        )
+        val cfg = currentConfig()
         scope.launch { saveConfig(context, cfg) }
+        updateActiveProfileConfig(cfg)
+    }
+
+    fun activateProfile(profileId: String) {
+        if (profileId == activeProfileId) return
+        updateActiveProfileConfig(currentConfig())
+        val target = networkProfiles.firstOrNull { it.id == profileId } ?: return
+        activeProfileId = profileId
+        applyConfig(target.config)
+        scope.launch { saveConfig(context, target.config) }
+        persistProfilesState(profileId)
+    }
+
+    fun createProfile(name: String) {
+        val sanitized = name.trim().ifBlank { "Profile ${networkProfiles.size + 1}" }
+        val profile = NetworkProfile(name = sanitized, config = currentConfig())
+        networkProfiles.add(profile)
+        activeProfileId = profile.id
+        scope.launch { saveConfig(context, profile.config) }
+        persistProfilesState(profile.id)
+    }
+
+    fun renameProfile(profileId: String, newName: String) {
+        val idx = networkProfiles.indexOfFirst { it.id == profileId }
+        if (idx < 0) return
+        val sanitized = newName.trim().ifBlank { networkProfiles[idx].name }
+        networkProfiles[idx] = networkProfiles[idx].copy(name = sanitized)
+        persistProfilesState()
+    }
+
+    fun deleteProfile(profileId: String) {
+        if (networkProfiles.size <= 1) return
+        val idx = networkProfiles.indexOfFirst { it.id == profileId }
+        if (idx < 0) return
+        val wasActive = networkProfiles[idx].id == activeProfileId
+        networkProfiles.removeAt(idx)
+        if (networkProfiles.isEmpty()) {
+            activeProfileId = null
+            persistProfilesState(null)
+            return
+        }
+        if (wasActive) {
+            val next = networkProfiles.first()
+            activeProfileId = next.id
+            applyConfig(next.config)
+            scope.launch { saveConfig(context, next.config) }
+        }
+        persistProfilesState(activeProfileId)
     }
     
     fun persistMentionsState() {
@@ -481,26 +583,22 @@ private fun MainScreen(client: IrcClient) {
             channelEvents[STATUS_CHANNEL_KEY] = mutableStateListOf()
             buffers[STATUS_CHANNEL_KEY] = BufferMeta("Status", BufferType.STATUS)
         }
-        val saved = loadSavedConfig(context)
-        server = saved.server
-        portInput = saved.port.toString()
-        useTls = saved.tls
-        nick = saved.nick
-        user = saved.user
-        realName = saved.realName
-        primaryChannel = saved.channel
-        extraChannels = saved.channels
-        highlights = saved.highlights
-        highlightExceptions = saved.highlightExceptions
-        ignoreNicks = saved.ignoreNicks
-        saslAccount = saved.saslAccount
-        saslPassword = saved.saslPassword
-        stripColors = saved.stripColors
-        allowBackgrounds = saved.allowBackgrounds
-        fontScalePercent = saved.fontScalePercent
-        quietHoursEnabled = saved.quietHoursEnabled
-        quietHoursStart = saved.quietHoursStart
-        quietHoursEnd = saved.quietHoursEnd
+        val storedProfiles = loadNetworkProfiles(context)
+        if (storedProfiles.profiles.isNotEmpty()) {
+            networkProfiles.clear()
+            networkProfiles.addAll(storedProfiles.profiles)
+            val target = storedProfiles.profiles.firstOrNull { it.id == storedProfiles.activeId } ?: storedProfiles.profiles.first()
+            activeProfileId = target.id
+            applyConfig(target.config)
+            saveConfig(context, target.config)
+        } else {
+            val saved = loadSavedConfig(context)
+            applyConfig(saved)
+            val defaultProfile = NetworkProfile(name = "Default", config = saved)
+            networkProfiles.add(defaultProfile)
+            activeProfileId = defaultProfile.id
+            saveNetworkProfiles(context, networkProfiles.toList(), defaultProfile.id)
+        }
 
         val storedMentions = loadMentions(context)
         mentions.clear()
@@ -567,6 +665,10 @@ private fun MainScreen(client: IrcClient) {
 
     if (!sessionActive) {
         ConnectionForm(
+            profiles = networkProfiles,
+            activeProfileId = activeProfileId,
+            onProfileSelect = { id -> activateProfile(id) },
+            onManageProfiles = { showProfileManager = true },
             server = server,
             onServerChange = { server = it },
             port = portInput,
@@ -759,10 +861,55 @@ private fun MainScreen(client: IrcClient) {
             pendingModerationTarget = null
         }
     )
+
+    ProfileManagerDialog(
+        show = showProfileManager,
+        profiles = networkProfiles,
+        activeProfileId = activeProfileId,
+        onDismiss = { showProfileManager = false },
+        onSelect = { id ->
+            activateProfile(id)
+            showProfileManager = false
+        },
+        onRequestCreate = {
+            profileEditorState = ProfileEditorState(ProfileDialogMode.CREATE, null, "")
+        },
+        onRequestRename = { profile ->
+            profileEditorState = ProfileEditorState(ProfileDialogMode.RENAME, profile.id, profile.name)
+        },
+        onRequestDelete = { profile ->
+            if (networkProfiles.size > 1) profilePendingDelete = profile
+        }
+    )
+
+    ProfileEditorDialog(
+        state = profileEditorState,
+        onDismiss = { profileEditorState = null },
+        onConfirm = { state, name ->
+            when (state.mode) {
+                ProfileDialogMode.CREATE -> createProfile(name)
+                ProfileDialogMode.RENAME -> state.profileId?.let { renameProfile(it, name) }
+            }
+            profileEditorState = null
+        }
+    )
+
+    ProfileDeleteDialog(
+        profile = profilePendingDelete,
+        onDismiss = { profilePendingDelete = null },
+        onConfirm = { profile ->
+            deleteProfile(profile.id)
+            profilePendingDelete = null
+        }
+    )
 }
 
 @Composable
 private fun ConnectionForm(
+    profiles: List<NetworkProfile>,
+    activeProfileId: String?,
+    onProfileSelect: (String) -> Unit,
+    onManageProfiles: () -> Unit,
     server: String,
     onServerChange: (String) -> Unit,
     port: String,
@@ -784,6 +931,12 @@ private fun ConnectionForm(
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        ProfileSelector(
+            profiles = profiles,
+            activeProfileId = activeProfileId,
+            onProfileSelect = onProfileSelect,
+            onManageProfiles = onManageProfiles,
+        )
         Text("Connect to IRC", style = MaterialTheme.typography.headlineSmall)
         OutlinedTextField(value = server, onValueChange = onServerChange, label = { Text("Server") }, modifier = Modifier.fillMaxWidth())
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
@@ -809,6 +962,57 @@ private fun ConnectionForm(
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = onConnect) { Text("Connect") }
             OutlinedButton(onClick = onShowSettings) { Text("Advanced settings") }
+        }
+    }
+}
+
+@Composable
+private fun ProfileSelector(
+    profiles: List<NetworkProfile>,
+    activeProfileId: String?,
+    onProfileSelect: (String) -> Unit,
+    onManageProfiles: () -> Unit,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    val activeProfile = profiles.firstOrNull { it.id == activeProfileId } ?: profiles.firstOrNull()
+    val activeName = activeProfile?.name ?: "Default"
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Network profile", style = MaterialTheme.typography.labelSmall)
+        OutlinedButton(onClick = { menuOpen = true }, modifier = Modifier.fillMaxWidth()) {
+            Text(activeName, modifier = Modifier.weight(1f))
+            Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+        }
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            if (profiles.isEmpty()) {
+                DropdownMenuItem(
+                    text = { Text("No profiles yet") },
+                    enabled = false,
+                    onClick = {}
+                )
+            } else {
+                profiles.forEach { profile ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = profile.name,
+                                fontWeight = if (profile.id == activeProfileId) FontWeight.SemiBold else FontWeight.Normal
+                            )
+                        },
+                        onClick = {
+                            menuOpen = false
+                            onProfileSelect(profile.id)
+                        }
+                    )
+                }
+                HorizontalDivider()
+            }
+            DropdownMenuItem(
+                text = { Text("Manage profiles…") },
+                onClick = {
+                    menuOpen = false
+                    onManageProfiles()
+                }
+            )
         }
     }
 }
@@ -1694,6 +1898,118 @@ private fun MetaRow(
 }
 
 @Composable
+private fun ProfileManagerDialog(
+    show: Boolean,
+    profiles: List<NetworkProfile>,
+    activeProfileId: String?,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+    onRequestCreate: () -> Unit,
+    onRequestRename: (NetworkProfile) -> Unit,
+    onRequestDelete: (NetworkProfile) -> Unit,
+) {
+    if (!show) return
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        dismissButton = { TextButton(onClick = onRequestCreate) { Text("Add profile") } },
+        title = { Text("Network profiles") },
+        text = {
+            if (profiles.isEmpty()) {
+                Text("No saved profiles yet. Add one to store your server credentials and channel list.")
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    profiles.forEach { profile ->
+                        Surface(
+                            shape = MaterialTheme.shapes.small,
+                            tonalElevation = if (profile.id == activeProfileId) 1.dp else 0.dp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelect(profile.id) }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        profile.name,
+                                        fontWeight = if (profile.id == activeProfileId) FontWeight.SemiBold else FontWeight.Normal
+                                    )
+                                    if (profile.id == activeProfileId) {
+                                        Text("Active", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+                                IconButton(onClick = { onRequestRename(profile) }) {
+                                    Icon(Icons.Filled.Edit, contentDescription = "Rename profile")
+                                }
+                                IconButton(
+                                    onClick = { onRequestDelete(profile) },
+                                    enabled = profiles.size > 1
+                                ) {
+                                    Icon(Icons.Filled.Delete, contentDescription = "Delete profile")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun ProfileEditorDialog(
+    state: ProfileEditorState?,
+    onDismiss: () -> Unit,
+    onConfirm: (ProfileEditorState, String) -> Unit,
+) {
+    if (state == null) return
+    var name by remember(state) { mutableStateOf(state.initialName) }
+    val title = if (state.mode == ProfileDialogMode.CREATE) "Add profile" else "Rename profile"
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = {
+                val trimmed = name.trim()
+                if (trimmed.isNotEmpty()) onConfirm(state, trimmed)
+            }) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        title = { Text(title) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it.take(40) },
+                label = { Text("Profile name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    )
+}
+
+@Composable
+private fun ProfileDeleteDialog(
+    profile: NetworkProfile?,
+    onDismiss: () -> Unit,
+    onConfirm: (NetworkProfile) -> Unit,
+) {
+    if (profile == null) return
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = { onConfirm(profile) }) { Text("Delete") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        title = { Text("Delete profile") },
+        text = { Text("Remove \"${profile.name}\"? This only deletes the saved configuration.") }
+    )
+}
+
+@Composable
 private fun LinkableAnnotatedText(
     annotated: AnnotatedString,
     style: TextStyle,
@@ -1859,6 +2175,14 @@ private const val PREVIEW_RETRY_MS = 5 * 60 * 1000L
 
 private val URL_REGEX = Regex("https?://[\\w._~:/?#@!$&'()*+,;=%-]+", RegexOption.IGNORE_CASE)
 private val URL_TRAILING_CHARS = setOf('.', ',', ')', ']', '}', '>', '"', '\'', ':', ';', '…')
+
+private data class ProfileEditorState(
+    val mode: ProfileDialogMode,
+    val profileId: String?,
+    val initialName: String,
+)
+
+private enum class ProfileDialogMode { CREATE, RENAME }
 
 private fun extractFirstUrl(text: String): String? {
     val match = URL_REGEX.find(text) ?: return null

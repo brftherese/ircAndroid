@@ -28,6 +28,7 @@
 - **Upstream reference:** `client/components/NetworkForm.vue`, server config handling.
 - **Strategy:** They treat each connection as a separate “network” with independent buffers stored server-side, plus profile switchers.
 - **Android plan:** Expand `SavedConfig` into a list stored via Room/DataStore, provide UI for adding/editing networks, and spin up separate `IrcClient` instances (or sequential connect) per network.
+- **Status:** Added client-side profile store (`NetworkProfilesStore.kt`) with JSON DataStore persistence, Compose picker on the connection form, and a manager dialog for add/rename/delete. We still connect to one network at a time, but swapping between saved configs is now parity-friendly.
 
 ---
 
