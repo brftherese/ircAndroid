@@ -31,6 +31,16 @@
 - **Android plan:** Expand `SavedConfig` into a list stored via Room/DataStore, provide UI for adding/editing networks, and spin up separate `IrcClient` instances (or sequential connect) per network.
 - **Status:** Added client-side profile store (`NetworkProfilesStore.kt`) with JSON DataStore persistence, Compose picker on the connection form, and a manager dialog for add/rename/delete. We still connect to one network at a time, but swapping between saved configs is now parity-friendly.
 
+## Parity Gaps (Nov 25, 2025 Audit)
+
+1. **Always-on multi-user host** — The Lounge’s Node.js daemon (`server/server.ts`, `server/clientManager.ts`) supports private/public deployments, authentication, and keeps IRC connections alive even when users disconnect. Our Android client is a single-user foreground app, so there is no background daemon, account login, or server-side resume/log-out workflow.
+2. **Server-side history + log storage** — Upstream persists scrollback via the `server/plugins/messageStorage/*` (SQLite/text) and exposes cleanup policies (`storageCleaner.ts`). We currently rely purely on in-memory Compose lists; closing the app drops history beyond mentions.
+3. **Web push + notification relays** — Files like `server/plugins/webpush.ts` integrate with browsers for push notifications and offline alerts. Android-only local notifications fire for highlights, but we lack any push subscription or relay for other devices.
+4. **File upload + media proxy** — TL ships uploader hooks (`server/plugins/uploader.ts`) and client UI (drag-and-drop in `client/components/ChatInput.vue`, previews in `client/components/Message.vue`). Our app has no upload feature, no proxying of HTTP assets, and no storage/quota UI.
+5. **Prefetch storage + media policies** — Beyond simple OpenGraph fetches, TL can cache thumbnails via `prefetchStorage` and enforce size caps/config toggles (see `defaults/config.js`’s `prefetch*` keys). Android currently fetches previews client-side without caching, proxying, or user settings.
+6. **Plugin/theme ecosystem** — The Lounge exposes hooks under `server/plugins/*` and supports installable client themes (`client/components/Settings/Appearance.vue`). We have a fixed Material theme and no extension points for custom scripts/features.
+7. **Advanced network plumbing** — WEBIRC, identd/oidentd, multi-network binding, and `lockNetwork`/`reverseProxy` controls in `defaults/config.js` are not represented in the Android UI. We only expose basic TLS, sasl, and channel options.
+
 ---
 
 These notes should expand as we tackle each backlog item—always cite the peer files in The Lounge and capture the data flow we’re mirroring before coding.
