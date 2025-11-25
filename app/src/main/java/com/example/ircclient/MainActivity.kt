@@ -2,15 +2,14 @@ package com.example.ircclient
 
 import android.Manifest
 import android.content.Context
+import android.content.ComponentName
 import android.content.Intent
+import android.content.ServiceConnection
 import android.content.pm.PackageManager
-import android.net.ConnectivityManager
 import android.net.Uri
-import android.net.Network
-import android.net.NetworkCapabilities
-import android.net.NetworkRequest
 import android.os.Build
 import android.os.Bundle
+import android.os.IBinder
 import android.text.format.DateFormat
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -53,6 +52,7 @@ import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -99,7 +99,6 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.lifecycleScope
 import com.example.ircclient.MentionBufferKind
 import com.example.ircclient.MentionEntry
 import com.example.ircclient.NetworkProfile
@@ -112,32 +111,57 @@ import com.example.ircclient.persistence.ScrollbackStore
 import com.example.ircclient.ui.ConnectedTopBar
 import com.example.ircclient.ui.theme.AppTheme
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.util.Calendar
 import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
-    private lateinit var client: IrcClient
-    private lateinit var connectivityManager: ConnectivityManager
-    private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private lateinit var scrollbackStore: ScrollbackStore
+    private val boundClientState = mutableStateOf<IrcClient?>(null)
+    private val sessionFlowState = mutableStateOf<StateFlow<Boolean>?>(null)
+    private var connectionService: ConnectionService? = null
+    private var serviceBound = false
+
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val binder = service as? ConnectionService.LocalBinder ?: return
+            val svc = binder.getService()
+            connectionService = svc
+            boundClientState.value = svc.client
+            sessionFlowState.value = svc.sessionActive
+            serviceBound = true
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            connectionService = null
+            boundClientState.value = null
+            sessionFlowState.value = null
+            serviceBound = false
+        }
+    }
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        client = IrcClient(lifecycleScope)
-        connectivityManager = getSystemService(ConnectivityManager::class.java)
         scrollbackStore = ScrollbackStore(ChatDatabase.getInstance(applicationContext).bufferEventDao())
         NotificationHelper.init(this)
         requestNotificationPermissionIfNeeded()
-        registerNetworkCallback()
+        ConnectionService.start(this)
+        bindService(Intent(this, ConnectionService::class.java), serviceConnection, Context.BIND_AUTO_CREATE)
 
         setContent {
             AppTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    MainScreen(client = client, scrollbackStore = scrollbackStore)
+                    MainScreen(
+                        client = boundClientState.value,
+                        scrollbackStore = scrollbackStore,
+                        sessionState = sessionFlowState.value,
+                        onConnectRequest = { config -> connectionService?.startSession(config) },
+                        onDisconnectRequest = { connectionService?.stopSession() }
+                    )
                 }
             }
         }
@@ -155,8 +179,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        unregisterNetworkCallback()
-        client.disconnect()
+        if (serviceBound) {
+            unbindService(serviceConnection)
+            serviceBound = false
+        }
     }
 
     private fun requestNotificationPermissionIfNeeded() {
@@ -167,37 +193,26 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun registerNetworkCallback() {
-        val request = NetworkRequest.Builder()
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .build()
-        val callback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) {
-                client.setActiveNetwork(network)
-                client.onNetworkAvailable(true)
-            }
-
-            override fun onLost(network: Network) {
-                client.onNetworkAvailable(false)
-            }
-        }
-        connectivityManager.registerNetworkCallback(request, callback)
-        networkCallback = callback
-    }
-
-    private fun unregisterNetworkCallback() {
-        networkCallback?.let { connectivityManager.unregisterNetworkCallback(it) }
-        networkCallback = null
-    }
 }
 
 @Composable
-private fun MainScreen(client: IrcClient, scrollbackStore: ScrollbackStore) {
+private fun MainScreen(
+    client: IrcClient?,
+    scrollbackStore: ScrollbackStore,
+    sessionState: StateFlow<Boolean>?,
+    onConnectRequest: (IrcClient.Config) -> Unit,
+    onDisconnectRequest: () -> Unit,
+) {
+    if (client == null || sessionState == null) {
+        ServiceLoading()
+        return
+    }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val connected by client.connected.collectAsState(initial = false)
     val echoEnabled by client.echoEnabled.collectAsState(initial = false)
     val users by client.users.collectAsState(initial = emptyList())
+    val sessionActive by sessionState.collectAsState(initial = sessionState.value)
 
     var server by remember { mutableStateOf("irc.libera.chat") }
     var portInput by remember { mutableStateOf("6697") }
@@ -219,7 +234,6 @@ private fun MainScreen(client: IrcClient, scrollbackStore: ScrollbackStore) {
     var quietHoursStart by remember { mutableStateOf(23) }
     var quietHoursEnd by remember { mutableStateOf(7) }
 
-    var sessionActive by remember { mutableStateOf(false) }
     var currentChannel by remember { mutableStateOf<String?>(null) }
     var compactMode by remember { mutableStateOf(false) }
     var outgoing by remember { mutableStateOf(TextFieldValue("")) }
@@ -636,6 +650,14 @@ private fun MainScreen(client: IrcClient, scrollbackStore: ScrollbackStore) {
         mentions.addAll(storedMentions.take(MAX_MENTIONS))
     }
 
+    var lastSessionActive by remember { mutableStateOf(sessionActive) }
+    LaunchedEffect(sessionActive) {
+        if (!sessionActive && lastSessionActive) {
+            resetSessionState()
+        }
+        lastSessionActive = sessionActive
+    }
+
     LaunchedEffect(client) {
         client.incoming.collectLatest { raw ->
             val event = parseIrcLine(raw) ?: UiEvent.System(raw, time = System.currentTimeMillis())
@@ -720,8 +742,7 @@ private fun MainScreen(client: IrcClient, scrollbackStore: ScrollbackStore) {
                 }
                 resetSessionState()
                 persistConfig()
-                sessionActive = true
-                client.connect(
+                onConnectRequest(
                     IrcClient.Config(
                         server = server.trim(),
                         port = port,
@@ -783,8 +804,7 @@ private fun MainScreen(client: IrcClient, scrollbackStore: ScrollbackStore) {
             },
             onJoinRequest = { showJoin = true },
             onDisconnect = {
-                sessionActive = false
-                client.disconnect()
+                onDisconnectRequest()
                 resetSessionState()
             },
             helpText = helpText,
@@ -934,6 +954,13 @@ private fun MainScreen(client: IrcClient, scrollbackStore: ScrollbackStore) {
             profilePendingDelete = null
         }
     )
+}
+
+@Composable
+private fun ServiceLoading() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator()
+    }
 }
 
 @Composable

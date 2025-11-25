@@ -13,6 +13,7 @@ import androidx.core.app.NotificationManagerCompat
 object NotificationHelper {
     private const val CHANNEL_HIGHLIGHTS = "irc_highlights"
     private const val CHANNEL_DIRECT = "irc_direct"
+    private const val CHANNEL_SESSION = "irc_session"
 
     enum class NotificationKind { HIGHLIGHT, DIRECT }
 
@@ -37,8 +38,17 @@ object NotificationHelper {
                 enableLights(true)
                 lightColor = Color.MAGENTA
             }
+            val sessionChannel = NotificationChannel(
+                CHANNEL_SESSION,
+                "IRC Session",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Foreground session status"
+                setShowBadge(false)
+            }
             nm.createNotificationChannel(highlightChannel)
             nm.createNotificationChannel(dmChannel)
+            nm.createNotificationChannel(sessionChannel)
         }
     }
 
@@ -81,4 +91,21 @@ object NotificationHelper {
             .build()
         NotificationManagerCompat.from(context).notify(id, notif)
     }
+
+    fun buildSessionNotification(
+        context: Context,
+        title: String,
+        text: String,
+        stopIntent: PendingIntent,
+        contentIntent: PendingIntent,
+    ) = NotificationCompat.Builder(context, CHANNEL_SESSION)
+        .setSmallIcon(android.R.drawable.stat_notify_sync)
+        .setContentTitle(title)
+        .setContentText(text)
+        .setContentIntent(contentIntent)
+        .setCategory(NotificationCompat.CATEGORY_SERVICE)
+        .setOngoing(true)
+        .setPriority(NotificationCompat.PRIORITY_LOW)
+        .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Disconnect", stopIntent)
+        .build()
 }

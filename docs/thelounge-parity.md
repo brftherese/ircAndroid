@@ -12,6 +12,7 @@ Last updated: 2025-11-25
 - Link previews implemented client-side in `LinkPreview.kt` with Compose cards rendered in chat rows.
 - Notifications + highlight badges via `NotificationHelper.kt`, `AppForeground.kt`, and the persisted mentions store.
 - Saved network profiles selectable in the connection form (profile picker Compose UI).
+- `ConnectionService.kt` keeps the socket in a foreground service backed by a persistent notification, so sessions remain alive even when the activity is backgrounded or reclaimed.
 
 ### The Lounge (Upstream) Highlights
 
@@ -29,7 +30,7 @@ Last updated: 2025-11-25
 | Buffer unread/markers | `client/components/Buffer.vue`, store marker helpers | ✅ Implemented (scroll markers + dividers) | `pendingScrollTime`/`lastRead` logic replicates markers/new message divider behavior. |
 | Link previews | `client/js/plugins/preview.js`, `client/components/Message.vue` | ✅ Implemented (`LinkPreview.kt`, Compose cards) | Currently first-URL only; lacks caching/policy toggles. |
 | Multi-network profiles | `client/components/NetworkForm.vue` + server connection handling | ⚠️ Partial (`NetworkProfilesStore.kt`) | Profiles saved/switchable, but only one active network connection at a time; no simultaneous multi-network buffers. |
-| Always-on host & auth | `server/server.ts`, `server/clientManager.ts`, plugins `auth/*` | ❌ Missing | Android is a foreground-only client; no daemon, account auth, or background resume. |
+| Always-on host & auth | `server/server.ts`, `server/clientManager.ts`, plugins `auth/*` | ⚠️ Partial (`ConnectionService.kt`) | Foreground service keeps a single-user session alive with notification controls, but we still lack multi-user auth and a true daemon like The Lounge server. |
 | Server-side history/logging | `server/plugins/messageStorage/*`, `storageCleaner.ts` | ⚠️ Partial | Local Room cache mirrors TL scrollback behavior for 30 days, but there is no multi-device sync or true server-side storage yet. |
 | Web push / offline alerts | `server/plugins/webpush.ts`, client `Windows/Notifications.vue` | ❌ Missing | Android has local notifications only; no push relay or sync to other devices. |
 | File uploads / media proxy | `server/plugins/uploader.ts`, `client/components/ChatInput.vue` | ❌ Missing | No upload UI, storage, or proxy handling in Android app. |
@@ -72,7 +73,7 @@ Last updated: 2025-11-25
 
 ## Parity Gaps & Opportunities (Nov 25, 2025 Audit)
 
-1. **Always-on multi-user host** — The Lounge’s Node.js daemon (`server/server.ts`, `server/clientManager.ts`) supports private/public deployments, authentication, and keeps IRC connections alive even when users disconnect. Our Android client is a single-user foreground app, so there is no background daemon, account login, or server-side resume/log-out workflow.
+1. **Always-on multi-user host** — The Lounge’s Node.js daemon (`server/server.ts`, `server/clientManager.ts`) supports private/public deployments, authentication, and keeps IRC connections alive even when users disconnect. `ConnectionService.kt` now mirrors the “always connected” behavior for a single user via a foreground service + persistent notification, but there is still no multi-user auth, shared daemon, or server-side resume/log-out workflow.
 2. **Server-side history + log storage** — Upstream persists scrollback via the `server/plugins/messageStorage/*` (SQLite/text) and exposes cleanup policies (`storageCleaner.ts`). Our local Room cache now mirrors 30-day / 5k-row history per buffer, but there is still no multi-device sync or server-authoritative log. Action: explore syncing the Room store with a Lounge backend or consuming CHATHISTORY endpoints for full parity.
 3. **Web push + notification relays** — Files like `server/plugins/webpush.ts` integrate with browsers for push notifications and offline alerts. Android-only local notifications fire for highlights, but we lack any push subscription or relay for other devices. Action: decide whether to integrate with Firebase Cloud Messaging or bridge to a Lounge host.
 4. **File upload + media proxy** — TL ships uploader hooks (`server/plugins/uploader.ts`) and client UI (drag-and-drop in `client/components/ChatInput.vue`, previews in `client/components/Message.vue`). Our app has no upload feature, no proxying of HTTP assets, and no storage/quota UI. Action: spec an Android share-sheet upload flow targeting a configurable Lounge uploader endpoint.
