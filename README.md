@@ -1,6 +1,6 @@
 # IRC Android Client
 
-An offline-first Android IRC client written in Kotlin with Jetpack Compose. It now includes multi-buffer chat, notifications, highlights, search, and persistent preferences on top of the core IRC socket implementation.
+An offline-first Android IRC client written in Kotlin with Jetpack Compose. It now includes multi-buffer chat, notifications, highlights, search, Room-backed scrollback, and persistent preferences on top of the core IRC socket implementation.
 
 ## Key Features
 
@@ -11,6 +11,7 @@ An offline-first Android IRC client written in Kotlin with Jetpack Compose. It n
 - Highlight detection with quiet hours, mute controls, and local notifications (Android 13+ runtime permission aware)
 - Rich link previews for HTTP/HTTPS URLs using a safe, size-limited client-side fetcher inspired by The Lounge preview plugin
 - Multiple saved network profiles so you can jump between servers/accounts without retyping credentials
+- Room-powered scrollback cache that restores the most recent 30 days / 5k events per buffer instantly on launch and survives process restarts
 - Contextual moderation menus: long-press members or chat messages to op/deop/voice/kick/ban when your channel mode allows it
 - Per-channel search, message history, day dividers, and “new messages” markers
 - Persistent settings via DataStore plus optional compact layout and adjustable font scaling
@@ -26,7 +27,7 @@ An offline-first Android IRC client written in Kotlin with Jetpack Compose. It n
 
 - Android Studio (Giraffe+ recommended) or Gradle 8.5+
 - Android SDK: compile/target SDK 34, min SDK 24
-- JDK 17+
+- Temurin/OpenJDK 21 (matches the CI workflow and enables the new Room/KSP toolchain)
 
 ## Getting Started
 
@@ -77,6 +78,7 @@ Then install the APK from `app/build/outputs/apk/debug/` onto a device.
 ### Persistence
 
 - All connection + appearance settings are saved via DataStore and restored on launch.
+- Room (`ChatDatabase`, `ScrollbackStore`, `PersistedEventMapper`) mirrors The Lounge `messageStorage` behavior locally, so each buffer seeds its last ~5k events (30-day retention) immediately after reconnecting.
 - Font scaling and compact layout toggle help adapt to phones/tablets.
 
 ## Notes

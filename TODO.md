@@ -4,18 +4,18 @@ The Android client should eventually match the end-user abilities exposed by The
 
 ## P0 - Core session parity
 
-- [ ] Multi-network profiles: allow adding, editing, and switching between multiple server configs instead of the single `SavedConfig` record in `Prefs.kt`.
+- [x] Multi-network profiles: allow adding, editing, and switching between multiple server configs instead of the single `SavedConfig` record in `Prefs.kt`. (`NetworkProfilesStore.kt` + Compose profile picker landed 2025-11-23.)
 - [ ] Always-on connections: move `IrcClient` into a foreground service with notification controls so the app remains connected when the UI process dies, mirroring The Lounge's persistent Node.js backend.
-- [ ] Durable history: replace the in-memory `channelEvents` map in `MainActivity.kt` with a Room/SQLCipher store so scrollback survives process death and can grow to `maxHistory`-like limits.
+- [x] Durable history: replace the in-memory `channelEvents` map in `MainActivity.kt` with a Room/SQLCipher store so scrollback survives process death and can grow to `maxHistory`-like limits. (`ScrollbackStore` + Room/KSP integration landed 2025-11-25 with 30-day/5k-row retention.)
 - [ ] Replay + sync: on reconnect, fetch playback via `CHATHISTORY`/`znc.in/playback` if offered, similar to how The Lounge backfills channels for late clients.
 - [ ] Capability negotiation parity: add support for `monitor`, `away-notify`, `account-tag`, `message-tags`, `setname`, and webirc/STS toggles exposed in `defaults/config.js`.
 - [ ] SASL + NickServ UX: surface dedicated flows for logging in/registering, and store encrypted credentials, matching the guided actions The Lounge exposes in its connect dialog.
 
 ## P1 - UX + power tools
 
-- [ ] Multi-buffer navigation: implement a proper sidebar (channels, queries, networks, statuses) with unread/highlight counts similar to `client/components/Sidebar.vue`.
-- [ ] Mentions drawer + new message markers: dedicated view of highlights (see `client/components/Mentions.vue`) and global unread separator markers.
-- [ ] Rich link previews + media viewer: port The Lounge `prefetch`/`ImageViewer` flow so URLs unfurl (with caching and size limits) and inline image/video modals are available on Android.
+- [x] Multi-buffer navigation: implement a proper sidebar (channels, queries, networks, statuses) with unread/highlight counts similar to `client/components/Sidebar.vue`. (Compose sidebar + AssistChips landed 2025-11-23.)
+- [x] Mentions drawer + new message markers: dedicated view of highlights (see `client/components/Mentions.vue`) and global unread separator markers. (Mentions sheet + badges + marker logic landed 2025-11-24.)
+- [ ] Rich link previews + media viewer: port The Lounge `prefetch`/`ImageViewer` flow so URLs unfurl (with caching and size limits) and inline image/video modals are available on Android. (Link previews implemented; media viewer + caching still open.)
 - [ ] File uploads: add share sheet + upload handling to parity with `fileUpload` support on the server side.
 - [x] Context menus + moderation tools: long-press actions for kick/ban/voice/op, mirroring `ContextMenu.vue`. _(User list + chat row menus with privilege-aware enablement landed 2025-11-23.)_
 - [ ] Advanced commands UI: expose helpers for `/ignore`, `/query`, `/topic`, `/notice`, `/invite`, `/away`, `/whois` with autocomplete and validation just like the desktop client. _(In progress – /notice, /invite, /away, `/ignore`, smarter `/topic`, `/query`, and improved `/whois` feedback landed on 2025-11-22/23; remaining work: contextual validation + UI affordances for power users.)_
