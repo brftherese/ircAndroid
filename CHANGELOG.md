@@ -8,6 +8,10 @@ All notable changes to this project are documented in this file. The format roug
 
 -
 
+### Changes
+
+- Link preview fetches are now backed by a 10-minute LRU cache so repeated URLs render instantly without hammering the remote host.
+
 ## [1.2.0] - 2025-11-26
 
 ### Added

@@ -2428,7 +2428,16 @@ private fun LinkableAnnotatedText(
 
 @Composable
 private fun LinkPreviewCard(url: String, states: SnapshotStateMap<String, LinkPreviewState>) {
-    val state = states[url]
+    var state = states[url]
+    if (state == null) {
+        val cached = LinkPreviewCache.get(url)
+        if (cached != null) {
+            val cachedStatus = if (cached.successful && cached.preview != null) PreviewStatus.Success else PreviewStatus.Failed
+            val cachedState = LinkPreviewState(status = cachedStatus, preview = cached.preview, lastAttempt = cached.timestamp)
+            states[url] = cachedState
+            state = cachedState
+        }
+    }
     val status = state?.status ?: PreviewStatus.Idle
 
     LaunchedEffect(url, status) {
@@ -2443,10 +2452,13 @@ private fun LinkPreviewCard(url: String, states: SnapshotStateMap<String, LinkPr
         if (shouldFetch) {
             states[url] = LinkPreviewState(status = PreviewStatus.Loading, lastAttempt = now)
             val preview = fetchLinkPreview(url)
+            val timestamp = System.currentTimeMillis()
             val refreshed = if (preview != null) {
-                LinkPreviewState(status = PreviewStatus.Success, preview = preview, lastAttempt = System.currentTimeMillis())
+                LinkPreviewCache.putSuccess(url, preview)
+                LinkPreviewState(status = PreviewStatus.Success, preview = preview, lastAttempt = timestamp)
             } else {
-                LinkPreviewState(status = PreviewStatus.Failed, preview = null, lastAttempt = System.currentTimeMillis())
+                LinkPreviewCache.putFailure(url)
+                LinkPreviewState(status = PreviewStatus.Failed, preview = null, lastAttempt = timestamp)
             }
             states[url] = refreshed
         }
@@ -2455,7 +2467,10 @@ private fun LinkPreviewCard(url: String, states: SnapshotStateMap<String, LinkPr
     when (status) {
         PreviewStatus.Success -> state?.preview?.let { PreviewContentCard(it) }
         PreviewStatus.Loading -> PreviewLoadingCard()
-        PreviewStatus.Failed -> PreviewErrorCard { states[url] = LinkPreviewState(status = PreviewStatus.Idle) }
+        PreviewStatus.Failed -> PreviewErrorCard {
+            LinkPreviewCache.invalidate(url)
+            states[url] = LinkPreviewState(status = PreviewStatus.Idle)
+        }
         PreviewStatus.Idle -> Unit
     }
 }

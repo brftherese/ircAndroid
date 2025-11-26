@@ -14,7 +14,7 @@ Last updated: 2025-11-25
 - Orientation changes no longer nuke the session UI—connection form values, the active buffer, joined channel list, and composer text all survive rotation via `rememberSaveable` helpers.
 - Private/service buffer chips (Auth, ChanServ, PMs) now expose an inline close action so you can dismiss them just like in The Lounge until new activity brings them back.
 - When reconnecting to channels that advertise `draft/chathistory`, the client now issues `CHATHISTORY AFTER …` requests using the last persisted timestamp so missed messages are replayed automatically.
-- Link previews implemented client-side in `LinkPreview.kt` with Compose cards rendered in chat rows.
+- Link previews implemented client-side in `LinkPreview.kt` with Compose cards rendered in chat rows and an in-memory 10-minute cache to avoid re-fetching the same URL repeatedly.
 - Notifications + highlight badges via `NotificationHelper.kt`, `AppForeground.kt`, and the persisted mentions store.
 - Saved network profiles selectable in the connection form (profile picker Compose UI).
 - `ConnectionService.kt` keeps the socket in a foreground service backed by a persistent notification, so sessions remain alive even when the activity is backgrounded or reclaimed.
@@ -33,7 +33,7 @@ Last updated: 2025-11-25
 | --- | --- | --- | --- |
 | Mentions drawer & badges | `client/components/Mentions.vue`, `client/js/store/mentions.js` | ✅ Implemented (`MentionsStore.kt`, Compose drawer) | Persistence + UI match upstream behavior, including badges and clear action. |
 | Buffer unread/markers | `client/components/Buffer.vue`, store marker helpers | ✅ Implemented (scroll markers + dividers) | `pendingScrollTime`/`lastRead` logic replicates markers/new message divider behavior. |
-| Link previews | `client/js/plugins/preview.js`, `client/components/Message.vue` | ✅ Implemented (`LinkPreview.kt`, Compose cards) | Currently first-URL only; lacks caching/policy toggles. |
+| Link previews | `client/js/plugins/preview.js`, `client/components/Message.vue` | ✅ Implemented (`LinkPreview.kt`, Compose cards, cached results) | Currently first-URL only and lacks policy toggles/media viewer. |
 | Multi-network profiles | `client/components/NetworkForm.vue` + server connection handling | ⚠️ Partial (`NetworkProfilesStore.kt`) | Profiles saved/switchable, but only one active network connection at a time; no simultaneous multi-network buffers. |
 | Always-on host & auth | `server/server.ts`, `server/clientManager.ts`, plugins `auth/*` | ⚠️ Partial (`ConnectionService.kt`) | Foreground service keeps a single-user session alive with notification controls, but we still lack multi-user auth and a true daemon like The Lounge server. |
 | Server-side history/logging | `server/plugins/messageStorage/*`, `storageCleaner.ts` | ⚠️ Partial | Local Room cache mirrors TL scrollback, and we now request `CHATHISTORY` playback on reconnect, but there is still no multi-device sync or true server-side storage yet. |
@@ -67,7 +67,7 @@ Last updated: 2025-11-25
 - **Upstream reference:** `client/js/plugins/preview.js`, `client/components/Message.vue`.
 - **Store strategy:** The Lounge server prefetches metadata and emits `msg.previews`. Client caches them per message.
 - **Android plan:** Implement a lightweight HTTP prefetch in the app (respecting size limits) or rely on a bridge API. Mirror their throttling and content-type filtering to avoid loading unsafe content.
-- **Status:** Prototype landed with `LinkPreview.kt` (size/time-limited HTML fetcher) and Compose cards in `ChatRow`. First URL in each message renders a preview with retry handling, mirroring The Lounge’s preview cards without server assistance.
+- **Status:** Client-side fetcher in `LinkPreview.kt` (size/time-limited HTML downloader) renders the first URL's preview with retry handling and now shares a 10-minute LRU cache (`LinkPreviewCache`) so repeated URLs do not re-fetch immediately. Remaining work: cache persistence/policy toggles and the media viewer parity.
 
 ### Multi-Network Profiles
 
