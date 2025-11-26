@@ -105,6 +105,7 @@ private fun SavedConfig.toJson(): JSONObject = JSONObject().apply {
     put("quietHoursEnabled", quietHoursEnabled)
     put("quietHoursStart", quietHoursStart)
     put("quietHoursEnd", quietHoursEnd)
+    put("forceLightTheme", forceLightTheme)
 }
 
 private fun JSONObject.toConfig(): SavedConfig = SavedConfig(
@@ -127,6 +128,7 @@ private fun JSONObject.toConfig(): SavedConfig = SavedConfig(
     quietHoursEnabled = optBoolean("quietHoursEnabled", false),
     quietHoursStart = optInt("quietHoursStart", 23),
     quietHoursEnd = optInt("quietHoursEnd", 7),
+    forceLightTheme = optBoolean("forceLightTheme", false),
 )
 
 private suspend fun <T> Flow<T>.firstOrNullSafe(): T? = try {

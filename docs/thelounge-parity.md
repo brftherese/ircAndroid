@@ -10,6 +10,7 @@ Last updated: 2025-11-25
 - Persistence uses DataStore helpers in `Prefs.kt`, `MentionsStore.kt`, and `NetworkProfilesStore.kt` for settings, highlights, and saved network profiles.
 - Local scrollback mirror powered by Room (`ChatDatabase`, `ScrollbackStore`) keeps per-buffer history with 30-day/5k-row caps between launches.
 - Full-screen settings sheet groups Identity, Highlights/Ignores, NickServ/SASL, Connection, Quiet hours, and Text size controls with helper text and NickServ Identify/Register actions so guidance matches The Lounge notifications settings UX.
+- Accessibility toggle adds a "Force light theme" option that pins the entire Compose hierarchy to the high-contrast e-ink palette regardless of system night mode, matching The Lounge's focus on legibility presets.
 - Orientation changes no longer nuke the session UI—connection form values, the active buffer, joined channel list, and composer text all survive rotation via `rememberSaveable` helpers.
 - Private/service buffer chips (Auth, ChanServ, PMs) now expose an inline close action so you can dismiss them just like in The Lounge until new activity brings them back.
 - When reconnecting to channels that advertise `draft/chathistory`, the client now issues `CHATHISTORY AFTER …` requests using the last persisted timestamp so missed messages are replayed automatically.
@@ -101,7 +102,7 @@ Last updated: 2025-11-25
 | TL-03 | Configurable link preview policy (enable/disable, size/time caps) | Todo | Hook settings screen into `LinkPreview.kt`, align with `defaults/config.js` controls. |
 | TL-04 | File upload + share-sheet integration | Todo | Needs API contract with Lounge uploader plugin; consider fallback if endpoint unavailable. |
 | TL-05 | Push/relay notifications | In progress | Plan: integrate FCM token registration + relay endpoint so Lounge `webpush` plugin can fan-out highlight payloads even when app is backgrounded. |
-| TL-06 | Theme presets + appearance settings | Todo | Compose Material 3 dynamic colors + manual overrides akin to `client/components/Settings/Appearance.vue`. |
+| TL-06 | Theme presets + appearance settings | In progress | First high-contrast “Force light theme” toggle landed; still need user-selectable palettes/backgrounds like `client/components/Settings/Appearance.vue`. |
 | TL-07 | Advanced connection options (WEBIRC, rejectUnauthorized, reconnect policy) | Todo | UI work + validation referencing `defaults/config.js`. |
 | TL-08 | In-app documentation + onboarding | In progress | Convert README highlights into an in-app help sheet; keep parity doc updated. |
 | TL-09 | Automation around Live Edit / dev workflow | Blocked | Requires Android Studio setup off-device; document manual steps (see prior instructions). |

@@ -156,3 +156,5 @@ Then the workflow will:
 - Upload the APK and SHA256 checksum as workflow artifacts and as GitHub release assets (creating/updating the release for the tag)
 
 Use `workflow_dispatch` when you want to rebuild an existing tag (e.g., after fixing secrets) without pushing a new commit.
+
+> **Note:** The keystore decode step now always runs so a missing/blank `RELEASE_KEYSTORE_B64` secret fails fast instead of silently skipping the signing setup. Double-check the secret before triggering the workflow.

@@ -24,7 +24,7 @@ The Android client should eventually match the end-user abilities exposed by The
 
 ## P2 - Personalization + integrations
 
-- [ ] Theme system: support multiple color schemes + background images akin to The Lounge theme packages.
+- [ ] Theme system: support multiple color schemes + background images akin to The Lounge theme packages. _(Force-light e-ink theme override shipped 2025-11-25 as the first accessibility preset; need additional palettes + customization.)_
 - [ ] Notification profiles: offer per-buffer mute/notify settings, quiet-hours presets, and Android notification channel management per network.
 - [ ] Plugin hooks: design extension points so future plugins (e.g., linkifying, URL scrapers) can run locally, similar to `server/plugins/`.
 - [ ] Settings sync: optional pairing with a self-hosted The Lounge instance to import/export configurations and logs.

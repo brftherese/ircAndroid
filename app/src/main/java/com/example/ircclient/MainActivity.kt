@@ -165,17 +165,13 @@ class MainActivity : ComponentActivity() {
         bindService(Intent(this, ConnectionService::class.java), serviceConnection, Context.BIND_AUTO_CREATE)
 
         setContent {
-            AppTheme {
-                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    MainScreen(
-                        client = boundClientState.value,
-                        scrollbackStore = scrollbackStore,
-                        sessionState = sessionFlowState.value,
-                        onConnectRequest = { config -> connectionService?.startSession(config) },
-                        onDisconnectRequest = { connectionService?.stopSession() }
-                    )
-                }
-            }
+            MainScreen(
+                client = boundClientState.value,
+                scrollbackStore = scrollbackStore,
+                sessionState = sessionFlowState.value,
+                onConnectRequest = { config -> connectionService?.startSession(config) },
+                onDisconnectRequest = { connectionService?.stopSession() }
+            )
         }
     }
 
@@ -215,8 +211,12 @@ private fun MainScreen(
     onConnectRequest: (IrcClient.Config) -> Unit,
     onDisconnectRequest: () -> Unit,
 ) {
+    var forceLightTheme by rememberSaveable { mutableStateOf(false) }
+
     if (client == null || sessionState == null) {
-        ServiceLoading()
+        AppTheme(forceLightTheme = forceLightTheme) {
+            ServiceLoading()
+        }
         return
     }
     val context = LocalContext.current
@@ -351,6 +351,7 @@ private fun MainScreen(
         quietHoursEnabled = quietHoursEnabled,
         quietHoursStart = quietHoursStart,
         quietHoursEnd = quietHoursEnd,
+        forceLightTheme = forceLightTheme,
     )
 
     fun applyConfig(cfg: SavedConfig) {
@@ -373,6 +374,7 @@ private fun MainScreen(
         quietHoursEnabled = cfg.quietHoursEnabled
         quietHoursStart = cfg.quietHoursStart
         quietHoursEnd = cfg.quietHoursEnd
+        forceLightTheme = cfg.forceLightTheme
     }
 
     fun persistProfilesState(activeId: String? = activeProfileId) {
@@ -761,193 +763,198 @@ private fun MainScreen(
     val fontScale = fontScalePercent / 100f
     val helpText = commandHelpText(outgoing.text, currentChannel != null)
 
-    if (!sessionActive) {
-        ConnectionForm(
-            profiles = networkProfiles,
-            activeProfileId = activeProfileId,
-            onProfileSelect = { id -> activateProfile(id) },
-            onManageProfiles = { showProfileManager = true },
-            server = server,
-            onServerChange = { server = it },
-            port = portInput,
-            onPortChange = { value -> portInput = value.filter { ch -> ch.isDigit() }.take(5) },
-            nick = nick,
-            onNickChange = { nick = it.take(32) },
-            primaryChannel = primaryChannel,
-            onPrimaryChange = { primaryChannel = it.take(64) },
-            extraChannels = extraChannels,
-            onExtrasChange = { extraChannels = it },
+    AppTheme(forceLightTheme = forceLightTheme) {
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            if (!sessionActive) {
+                ConnectionForm(
+                    profiles = networkProfiles,
+                    activeProfileId = activeProfileId,
+                    onProfileSelect = { id -> activateProfile(id) },
+                    onManageProfiles = { showProfileManager = true },
+                    server = server,
+                    onServerChange = { server = it },
+                    port = portInput,
+                    onPortChange = { value -> portInput = value.filter { ch -> ch.isDigit() }.take(5) },
+                    nick = nick,
+                    onNickChange = { nick = it.take(32) },
+                    primaryChannel = primaryChannel,
+                    onPrimaryChange = { primaryChannel = it.take(64) },
+                    extraChannels = extraChannels,
+                    onExtrasChange = { extraChannels = it },
+                    useTls = useTls,
+                    onUseTlsChange = { useTls = it },
+                    onConnect = {
+                        val port = portInput.toIntOrNull() ?: if (useTls) 6697 else 6667
+                        if (server.isBlank() || nick.isBlank()) {
+                            Toast.makeText(context, "Server and nick required", Toast.LENGTH_SHORT).show()
+                            return@ConnectionForm
+                        }
+                        resetSessionState()
+                        persistConfig()
+                        onConnectRequest(
+                            IrcClient.Config(
+                                server = server.trim(),
+                                port = port,
+                                useTls = useTls,
+                                nick = nick.trim(),
+                                user = user.ifBlank { "android" },
+                                realName = realName.ifBlank { nick },
+                                channel = primaryChannel.takeIf { it.isNotBlank() },
+                                saslAccount = saslAccount.takeIf { it.isNotBlank() },
+                                saslPassword = saslPassword.takeIf { it.isNotBlank() },
+                            )
+                        )
+                    },
+                    onShowSettings = { showSettings = true }
+                )
+            } else {
+                SessionScreen(
+                    connected = connected,
+                    nick = nick,
+                    linkPreviewStates = linkPreviewStates,
+                    highlightCounts = highlightCounts,
+                    mentionsCount = mentions.count { !it.dismissed },
+                    onMentions = { showMentions = true },
+                    compactMode = compactMode,
+                    onToggleCompact = { compactMode = !compactMode },
+                    quietHoursEnabled = quietHoursEnabled,
+                    quietHoursStart = quietHoursStart,
+                    quietHoursEnd = quietHoursEnd,
+                    onQuietToggle = { quietHoursEnabled = it; persistConfig() },
+                    buffers = buffers,
+                    joinedChannels = joinedChannels,
+                    queries = queries,
+                    listState = listState,
+                    bufferScroll = bufferScroll,
+                    currentChannel = currentChannel,
+                    onChannelChange = { channel -> currentChannel = channel },
+                    events = activeEvents,
+                    fontScale = fontScale,
+                    stripColors = stripColors,
+                    allowBackgrounds = allowBackgrounds,
+                    outgoing = outgoing,
+                    onOutgoingChange = { outgoing = it },
+                    onSend = { sendCurrentMessage() },
+                    showSuggestions = showSuggestions,
+                    suggestions = suggestions,
+                    onSuggestionSelected = { suggestion ->
+                        val before = outgoing.text.substring(0, outgoing.selection.start)
+                        val after = outgoing.text.substring(outgoing.selection.end)
+                        val parts = before.split(' ', '\n', '\t').toMutableList()
+                        if (parts.isNotEmpty()) {
+                            parts[parts.lastIndex] = suggestion
+                        } else {
+                            parts.add(suggestion)
+                        }
+                        val prefix = parts.joinToString(" ").trimEnd()
+                        val newText = if (after.startsWith(" ") || after.isEmpty()) "$prefix$after" else "$prefix $after"
+                        outgoing = TextFieldValue(newText, selection = TextRange(prefix.length))
+                        showSuggestions = false
+                    },
+                    onCloseBuffer = { closeQueryBuffer(it) },
+                    onJoinRequest = { showJoin = true },
+                    onDisconnect = {
+                        onDisconnectRequest()
+                        resetSessionState()
+                    },
+                    helpText = helpText,
+                    onShowUsers = { showUsers = true },
+                    onShowSettings = { showSettings = true },
+                    onChatLongPress = onChatLongPress@{ chat ->
+                        if (!moderationEnabled) return@onChatLongPress
+                        if (chat.nick.equals(nick, ignoreCase = true)) return@onChatLongPress
+                        val match = channelUsersMap[chat.nick.lowercase()]
+                        pendingModerationTarget = ModerationTarget(chat.nick, match?.mode)
+                    }
+                )
+            }
+        }
+
+        JoinChannelDialog(show = showJoin, onDismiss = { showJoin = false }, onJoin = { channel ->
+            val normalized = if (channel.startsWith("#")) channel else "#${channel}"
+            client.join(normalized)
+            showJoin = false
+        })
+
+        UsersDialog(
+            show = showUsers,
+            onDismiss = { showUsers = false },
+            users = users,
+            currentChannel = currentChannel,
+            selfNick = nick,
+            moderationEnabled = moderationEnabled,
+            isActionEnabled = actionEnabled,
+            onModerationAction = { target, action -> handleModerationAction(target, action, selfModeSymbol, nick) }
+        )
+
+        SearchResultsDialog(
+            show = showSearchResults,
+            query = searchQuery,
+            results = searchResults,
+            onDismiss = { showSearchResults = false }
+        )
+
+        MentionsDialog(
+            show = showMentions,
+            mentions = mentions,
+            onDismiss = { showMentions = false },
+            onClear = {
+                mentions.clear()
+                persistMentionsState()
+                showMentions = false
+            },
+            onJump = { entry ->
+                entry.dismissed = true
+                pendingScrollTime = entry.time
+                when (entry.bufferKind) {
+                    MentionBufferKind.CHANNEL -> currentChannel = entry.bufferName
+                    MentionBufferKind.QUERY -> currentChannel = entry.bufferName
+                    MentionBufferKind.STATUS -> currentChannel = null
+                }
+                persistMentionsState()
+                showMentions = false
+            }
+        )
+
+        SettingsDialog(
+            show = showSettings,
+            onDismiss = { showSettings = false },
+            onSave = {
+                persistConfig()
+                showSettings = false
+            },
+            user = user,
+            onUserChange = { user = it.filter { ch -> ch.isLetterOrDigit() || ch == '_' }.take(32) },
+            realName = realName,
+            onRealNameChange = { realName = it.take(64) },
+            highlights = highlights,
+            onHighlightsChange = { highlights = it },
+            highlightExceptions = highlightExceptions,
+            onHighlightsExceptionsChange = { highlightExceptions = it },
+            ignoreNicks = ignoreNicks,
+            onIgnoreChange = { ignoreNicks = it },
+            saslAccount = saslAccount,
+            onSaslAccountChange = { saslAccount = it.take(64) },
+            saslPassword = saslPassword,
+            onSaslPasswordChange = { saslPassword = it.take(128) },
+            stripColors = stripColors,
+            onStripColorsChange = { stripColors = it },
+            allowBackgrounds = allowBackgrounds,
+            onAllowBackgroundChange = { allowBackgrounds = it },
+            forceLightTheme = forceLightTheme,
+            onForceLightThemeChange = { forceLightTheme = it },
             useTls = useTls,
             onUseTlsChange = { useTls = it },
-            onConnect = {
-                val port = portInput.toIntOrNull() ?: if (useTls) 6697 else 6667
-                if (server.isBlank() || nick.isBlank()) {
-                    Toast.makeText(context, "Server and nick required", Toast.LENGTH_SHORT).show()
-                    return@ConnectionForm
-                }
-                resetSessionState()
-                persistConfig()
-                onConnectRequest(
-                    IrcClient.Config(
-                        server = server.trim(),
-                        port = port,
-                        useTls = useTls,
-                        nick = nick.trim(),
-                        user = user.ifBlank { "android" },
-                        realName = realName.ifBlank { nick },
-                        channel = primaryChannel.takeIf { it.isNotBlank() },
-                        saslAccount = saslAccount.takeIf { it.isNotBlank() },
-                        saslPassword = saslPassword.takeIf { it.isNotBlank() },
-                    )
-                )
-            },
-            onShowSettings = { showSettings = true }
-        )
-    } else {
-        SessionScreen(
-            connected = connected,
-            nick = nick,
-            linkPreviewStates = linkPreviewStates,
-            highlightCounts = highlightCounts,
-            mentionsCount = mentions.count { !it.dismissed },
-            onMentions = { showMentions = true },
-            compactMode = compactMode,
-            onToggleCompact = { compactMode = !compactMode },
             quietHoursEnabled = quietHoursEnabled,
             quietHoursStart = quietHoursStart,
             quietHoursEnd = quietHoursEnd,
-            onQuietToggle = { quietHoursEnabled = it; persistConfig() },
-            buffers = buffers,
-            joinedChannels = joinedChannels,
-            queries = queries,
-            listState = listState,
-            bufferScroll = bufferScroll,
-            currentChannel = currentChannel,
-            onChannelChange = { channel -> currentChannel = channel },
-            events = activeEvents,
-            fontScale = fontScale,
-            stripColors = stripColors,
-            allowBackgrounds = allowBackgrounds,
-            outgoing = outgoing,
-            onOutgoingChange = { outgoing = it },
-            onSend = { sendCurrentMessage() },
-            showSuggestions = showSuggestions,
-            suggestions = suggestions,
-            onSuggestionSelected = { suggestion ->
-                val before = outgoing.text.substring(0, outgoing.selection.start)
-                val after = outgoing.text.substring(outgoing.selection.end)
-                val parts = before.split(' ', '\n', '\t').toMutableList()
-                if (parts.isNotEmpty()) {
-                    parts[parts.lastIndex] = suggestion
-                } else {
-                    parts.add(suggestion)
-                }
-                val prefix = parts.joinToString(" ").trimEnd()
-                val newText = if (after.startsWith(" ") || after.isEmpty()) "$prefix$after" else "$prefix $after"
-                outgoing = TextFieldValue(newText, selection = TextRange(prefix.length))
-                showSuggestions = false
-            },
-            onCloseBuffer = { closeQueryBuffer(it) },
-            onJoinRequest = { showJoin = true },
-            onDisconnect = {
-                onDisconnectRequest()
-                resetSessionState()
-            },
-            helpText = helpText,
-            onShowUsers = { showUsers = true },
-            onShowSettings = { showSettings = true },
-            onChatLongPress = onChatLongPress@{ chat ->
-                if (!moderationEnabled) return@onChatLongPress
-                if (chat.nick.equals(nick, ignoreCase = true)) return@onChatLongPress
-                val match = channelUsersMap[chat.nick.lowercase()]
-                pendingModerationTarget = ModerationTarget(chat.nick, match?.mode)
-            }
+            onQuietEnabledChange = { quietHoursEnabled = it },
+            onQuietStartChange = { quietHoursStart = it },
+            onQuietEndChange = { quietHoursEnd = it },
+            fontScalePercent = fontScalePercent,
+            onFontScaleChange = { fontScalePercent = it },
+            client = client
         )
-    }
-
-    JoinChannelDialog(show = showJoin, onDismiss = { showJoin = false }, onJoin = { channel ->
-        val normalized = if (channel.startsWith("#")) channel else "#${channel}"
-        client.join(normalized)
-        showJoin = false
-    })
-
-    UsersDialog(
-        show = showUsers,
-        onDismiss = { showUsers = false },
-        users = users,
-        currentChannel = currentChannel,
-        selfNick = nick,
-        moderationEnabled = moderationEnabled,
-        isActionEnabled = actionEnabled,
-        onModerationAction = { target, action -> handleModerationAction(target, action, selfModeSymbol, nick) }
-    )
-
-    SearchResultsDialog(
-        show = showSearchResults,
-        query = searchQuery,
-        results = searchResults,
-        onDismiss = { showSearchResults = false }
-    )
-
-    MentionsDialog(
-        show = showMentions,
-        mentions = mentions,
-        onDismiss = { showMentions = false },
-        onClear = {
-            mentions.clear()
-            persistMentionsState()
-            showMentions = false
-        },
-        onJump = { entry ->
-            entry.dismissed = true
-            pendingScrollTime = entry.time
-            when (entry.bufferKind) {
-                MentionBufferKind.CHANNEL -> currentChannel = entry.bufferName
-                MentionBufferKind.QUERY -> currentChannel = entry.bufferName
-                MentionBufferKind.STATUS -> currentChannel = null
-            }
-            persistMentionsState()
-            showMentions = false
-        }
-    )
-
-    SettingsDialog(
-        show = showSettings,
-        onDismiss = { showSettings = false },
-        onSave = {
-            persistConfig()
-            showSettings = false
-        },
-        user = user,
-        onUserChange = { user = it.filter { ch -> ch.isLetterOrDigit() || ch == '_' }.take(32) },
-        realName = realName,
-        onRealNameChange = { realName = it.take(64) },
-        highlights = highlights,
-        onHighlightsChange = { highlights = it },
-        highlightExceptions = highlightExceptions,
-        onHighlightsExceptionsChange = { highlightExceptions = it },
-        ignoreNicks = ignoreNicks,
-        onIgnoreChange = { ignoreNicks = it },
-        saslAccount = saslAccount,
-        onSaslAccountChange = { saslAccount = it.take(64) },
-        saslPassword = saslPassword,
-        onSaslPasswordChange = { saslPassword = it.take(128) },
-        stripColors = stripColors,
-        onStripColorsChange = { stripColors = it },
-        allowBackgrounds = allowBackgrounds,
-        onAllowBackgroundChange = { allowBackgrounds = it },
-        useTls = useTls,
-        onUseTlsChange = { useTls = it },
-        quietHoursEnabled = quietHoursEnabled,
-        quietHoursStart = quietHoursStart,
-        quietHoursEnd = quietHoursEnd,
-        onQuietEnabledChange = { quietHoursEnabled = it },
-        onQuietStartChange = { quietHoursStart = it },
-        onQuietEndChange = { quietHoursEnd = it },
-        fontScalePercent = fontScalePercent,
-        onFontScaleChange = { fontScalePercent = it },
-        client = client
-    )
 
     ModerationActionDialog(
         target = pendingModerationTarget,
@@ -1001,6 +1008,9 @@ private fun MainScreen(
         }
     )
 }
+}
+
+
 
 @Composable
 private fun ServiceLoading() {
@@ -1593,6 +1603,8 @@ private fun SettingsDialog(
     onStripColorsChange: (Boolean) -> Unit,
     allowBackgrounds: Boolean,
     onAllowBackgroundChange: (Boolean) -> Unit,
+    forceLightTheme: Boolean,
+    onForceLightThemeChange: (Boolean) -> Unit,
     useTls: Boolean,
     onUseTlsChange: (Boolean) -> Unit,
     quietHoursEnabled: Boolean,
@@ -1751,6 +1763,12 @@ private fun SettingsDialog(
                             caption = "Render IRC background color codes.",
                             checked = allowBackgrounds,
                             onCheckedChange = onAllowBackgroundChange
+                        )
+                        SettingsToggle(
+                            label = "Force light theme",
+                            caption = "Use the high-contrast e-ink palette even when Android is in dark mode.",
+                            checked = forceLightTheme,
+                            onCheckedChange = onForceLightThemeChange
                         )
                     }
                 }

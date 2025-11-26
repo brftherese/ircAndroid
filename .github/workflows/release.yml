@@ -43,7 +43,6 @@ jobs:
             platform-tools
 
       - name: Decode release keystore
-        if: env.RELEASE_KEYSTORE_B64 != ''
         run: |
           echo "$RELEASE_KEYSTORE_B64" | base64 -d > keystore/ircclient.keystore
         env:
