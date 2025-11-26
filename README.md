@@ -49,10 +49,11 @@ Looking for end-user guidance? See the hosted [User Guide](https://github.com/br
 ## Documentation
 
 - [GitHub Wiki: User Guide](https://github.com/brftherese/ircAndroid/wiki/User-Guide): End-user setup and usage guide (installing, connecting, highlights, troubleshooting).
-- `RELEASING.md`: Signing, versioning, and GitHub Actions release process.
+- [GitHub Wiki: Releasing](https://github.com/brftherese/ircAndroid/wiki/Releasing): Signing, versioning, and GitHub Actions automation.
+- [GitHub Wiki: The Lounge Parity](https://github.com/brftherese/ircAndroid/wiki/The-Lounge-Parity): Feature comparison and backlog notes versus upstream.
+- `RELEASING.md`, `docs/thelounge-parity.md`: Canonical copies kept in-repo for PR review.
 - `CHANGELOG.md`: Release-by-release history.
 - `TODO.md`: Parity roadmap and outstanding work.
-- `docs/thelounge-parity.md`: Detailed feature comparison with The Lounge.
 - `docs/tl01-scrollback.md`, `docs/tl05-notifications.md`: Deep dives into storage and notifications.
 
 ## Roadmap & Contributions
