@@ -9,6 +9,7 @@ Last updated: 2025-11-25
 - `app/src/main/java/com/example/ircclient/MainActivity.kt` + Compose UI: multi-buffer chat, sidebar, mentions drawer, slash commands, moderation menus, search, quiet hours, notifications (summarized in `README.md`).
 - Persistence uses DataStore helpers in `Prefs.kt`, `MentionsStore.kt`, and `NetworkProfilesStore.kt` for settings, highlights, and saved network profiles.
 - Local scrollback mirror powered by Room (`ChatDatabase`, `ScrollbackStore`) keeps per-buffer history with 30-day/5k-row caps between launches.
+- Full-screen settings sheet groups Identity, Highlights/Ignores, NickServ/SASL, Connection, Quiet hours, and Text size controls with helper text and NickServ Identify/Register actions so guidance matches The Lounge notifications settings UX.
 - When reconnecting to channels that advertise `draft/chathistory`, the client now issues `CHATHISTORY AFTER …` requests using the last persisted timestamp so missed messages are replayed automatically.
 - Link previews implemented client-side in `LinkPreview.kt` with Compose cards rendered in chat rows.
 - Notifications + highlight badges via `NotificationHelper.kt`, `AppForeground.kt`, and the persisted mentions store.

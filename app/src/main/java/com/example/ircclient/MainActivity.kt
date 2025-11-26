@@ -23,6 +23,9 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -38,6 +41,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -55,6 +59,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -98,6 +103,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import com.example.ircclient.MentionBufferKind
 import com.example.ircclient.MentionEntry
@@ -1519,6 +1525,7 @@ private fun SearchResultsDialog(show: Boolean, query: String, results: List<Sear
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun SettingsDialog(
     show: Boolean,
     onDismiss: () -> Unit,
@@ -1557,77 +1564,265 @@ private fun SettingsDialog(
     var showReg by remember { mutableStateOf(false) }
     var regEmail by remember { mutableStateOf("") }
     var regPass by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = onSave) { Text("Done") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        title = { Text("Settings") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = user, onValueChange = onUserChange, label = { Text("Username (USER)") }, modifier = Modifier.weight(1f))
-                    OutlinedTextField(value = realName, onValueChange = onRealNameChange, label = { Text("Real name") }, modifier = Modifier.weight(1f))
+    val scrollState = rememberScrollState()
+    val canIdentify = saslAccount.isNotBlank() && saslPassword.isNotBlank()
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 640.dp),
+            shape = MaterialTheme.shapes.extraLarge,
+            tonalElevation = 4.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(horizontal = 24.dp, vertical = 16.dp)
+                    .verticalScroll(scrollState),
+                verticalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Settings", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onDismiss) { Text("Cancel") }
+                    Button(onClick = onSave) { Text("Save") }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = highlights, onValueChange = onHighlightsChange, label = { Text("Highlights") }, modifier = Modifier.weight(1f))
-                    OutlinedTextField(value = highlightExceptions, onValueChange = onHighlightsExceptionsChange, label = { Text("Exceptions") }, modifier = Modifier.weight(1f))
+
+                SettingsSection(
+                    title = "Identity",
+                    description = "These values are sent during login and do not change your visible nick.",
+                ) {
+                    OutlinedTextField(
+                        value = user,
+                        onValueChange = onUserChange,
+                        label = { Text("Username (USER)") },
+                        singleLine = true,
+                        supportingText = { Text("Alphanumeric plus underscore, max 32 characters.") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = realName,
+                        onValueChange = onRealNameChange,
+                        label = { Text("Real name") },
+                        singleLine = true,
+                        supportingText = { Text("Shown in WHOIS responses.") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
-                OutlinedTextField(value = ignoreNicks, onValueChange = onIgnoreChange, label = { Text("Ignore nicks") }, modifier = Modifier.fillMaxWidth())
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = saslAccount, onValueChange = onSaslAccountChange, label = { Text("SASL account") }, modifier = Modifier.weight(1f))
-                    OutlinedTextField(value = saslPassword, onValueChange = onSaslPasswordChange, label = { Text("SASL password") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.weight(1f))
+
+                SettingsSection(
+                    title = "Highlights & ignore list",
+                    description = "Highlight rules drive notifications and the Mentions list.",
+                ) {
+                    OutlinedTextField(
+                        value = highlights,
+                        onValueChange = onHighlightsChange,
+                        label = { Text("Highlight terms") },
+                        placeholder = { Text("nick, release, urgent") },
+                        supportingText = { Text("Comma/space separated words. Matches whole words, case-insensitive. Your nick is always included.") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = highlightExceptions,
+                        onValueChange = onHighlightsExceptionsChange,
+                        label = { Text("Exceptions") },
+                        supportingText = { Text("Use the same separators to mute matches (handy for bots).") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = ignoreNicks,
+                        onValueChange = onIgnoreChange,
+                        label = { Text("Ignored nicks") },
+                        supportingText = { Text("We skip highlights and notifications from these users. Separate with commas or spaces.") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = {
-                        val account = saslAccount.trim()
-                        val pwd = saslPassword
-                        if (account.isNotEmpty() && pwd.isNotEmpty()) {
-                            client.sendRaw("PRIVMSG NickServ :IDENTIFY ${'$'}account ${'$'}pwd")
-                        }
-                    }) { Text("NickServ Identify") }
-                    OutlinedButton(onClick = { showReg = true }) { Text("NickServ Register") }
+
+                SettingsSection(
+                    title = "NickServ & SASL",
+                    description = "Stored locally and only sent when you tap Identify/Register.",
+                ) {
+                    OutlinedTextField(
+                        value = saslAccount,
+                        onValueChange = onSaslAccountChange,
+                        label = { Text("Account name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = saslPassword,
+                        onValueChange = onSaslPasswordChange,
+                        label = { Text("Password") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        FilledTonalButton(
+                            onClick = {
+                                val account = saslAccount.trim()
+                                val pwd = saslPassword
+                                if (account.isNotEmpty() && pwd.isNotEmpty()) {
+                                    client.sendRaw("PRIVMSG NickServ :IDENTIFY ${'$'}account ${'$'}pwd")
+                                }
+                            },
+                            enabled = canIdentify
+                        ) { Text("Identify with NickServ") }
+                        OutlinedButton(onClick = { showReg = true }) { Text("Register with NickServ") }
+                    }
+                    Text(
+                        "We send the exact NickServ commands for you so there are no surprises.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(checked = useTls, onCheckedChange = onUseTlsChange); Text("Use TLS") }
-                    Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(checked = stripColors, onCheckedChange = onStripColorsChange); Text("Monochrome") }
-                    Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(checked = allowBackgrounds, onCheckedChange = onAllowBackgroundChange); Text("Allow bg") }
+
+                SettingsSection(
+                    title = "Connection & appearance",
+                    description = "Tweak how incoming messages are rendered and whether TLS is required.",
+                ) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        SettingsToggle(
+                            label = "Use TLS",
+                            caption = "Encrypt the server connection when supported.",
+                            checked = useTls,
+                            onCheckedChange = onUseTlsChange
+                        )
+                        SettingsToggle(
+                            label = "Strip IRC colors",
+                            caption = "Great for readability-only themes.",
+                            checked = stripColors,
+                            onCheckedChange = onStripColorsChange
+                        )
+                        SettingsToggle(
+                            label = "Allow background colors",
+                            caption = "Render IRC background color codes.",
+                            checked = allowBackgrounds,
+                            onCheckedChange = onAllowBackgroundChange
+                        )
+                    }
                 }
-                QuietHoursSection(
-                    enabled = quietHoursEnabled,
-                    startHour = quietHoursStart,
-                    endHour = quietHoursEnd,
-                    onEnabledChange = onQuietEnabledChange,
-                    onStartChange = onQuietStartChange,
-                    onEndChange = onQuietEndChange
-                )
-                Text("Text size: ${fontScalePercent}%")
-                Slider(value = fontScalePercent / 100f, onValueChange = { value -> onFontScaleChange((value.coerceIn(0.85f, 1.5f) * 100).toInt()) }, valueRange = 0.85f..1.5f, steps = 5)
+
+                SettingsSection(
+                    title = "Quiet hours",
+                    description = "Mute highlight notifications for a predictable window.",
+                ) {
+                    QuietHoursSection(
+                        enabled = quietHoursEnabled,
+                        startHour = quietHoursStart,
+                        endHour = quietHoursEnd,
+                        onEnabledChange = onQuietEnabledChange,
+                        onStartChange = onQuietStartChange,
+                        onEndChange = onQuietEndChange
+                    )
+                }
+
+                SettingsSection(title = "Text size") {
+                    Text("Chat text ${'$'}{fontScalePercent}%", style = MaterialTheme.typography.bodyMedium)
+                    Slider(
+                        modifier = Modifier.fillMaxWidth(),
+                        value = fontScalePercent / 100f,
+                        onValueChange = { value ->
+                            onFontScaleChange((value.coerceIn(0.85f, 1.5f) * 100).toInt())
+                        },
+                        valueRange = 0.85f..1.5f,
+                        steps = 5
+                    )
+                }
             }
         }
-    )
+    }
     if (showReg) {
+        val canRegister = regEmail.isNotBlank() && regPass.isNotBlank()
         AlertDialog(
             onDismissRequest = { showReg = false },
             confirmButton = {
-                TextButton(onClick = {
-                    val email = regEmail.trim()
-                    val pwd = regPass
-                    if (email.isNotEmpty() && pwd.isNotEmpty()) {
-                        client.sendRaw("PRIVMSG NickServ :REGISTER ${'$'}pwd ${'$'}email")
-                        showReg = false
-                    }
-                }) { Text("Register") }
+                TextButton(
+                    onClick = {
+                        val email = regEmail.trim()
+                        val pwd = regPass
+                        if (email.isNotEmpty() && pwd.isNotEmpty()) {
+                            client.sendRaw("PRIVMSG NickServ :REGISTER ${'$'}pwd ${'$'}email")
+                            showReg = false
+                        }
+                    },
+                    enabled = canRegister
+                ) { Text("Register") }
             },
             dismissButton = { TextButton(onClick = { showReg = false }) { Text("Cancel") } },
-            title = { Text("Register Nick with NickServ") },
+            title = { Text("Register this nick") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = regEmail, onValueChange = { regEmail = it }, label = { Text("Email") })
-                    OutlinedTextField(value = regPass, onValueChange = { regPass = it }, label = { Text("Password") }, visualTransformation = PasswordVisualTransformation())
-                    Text("This sends: PRIVMSG NickServ :REGISTER <password> <email>")
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = regEmail,
+                        onValueChange = { regEmail = it },
+                        label = { Text("Email") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = regPass,
+                        onValueChange = { regPass = it },
+                        label = { Text("Password") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        "We send: PRIVMSG NickServ :REGISTER <password> <email>.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun SettingsSection(
+    title: String,
+    description: String? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+        Column {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            if (!description.isNullOrBlank()) {
+                Text(
+                    description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+    }
+}
+
+@Composable
+private fun SettingsToggle(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    caption: String? = null,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = checked, onCheckedChange = onCheckedChange)
+        Spacer(Modifier.width(4.dp))
+        Column {
+            Text(label, style = MaterialTheme.typography.bodyMedium)
+            if (!caption.isNullOrBlank()) {
+                Text(caption, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+            }
+        }
     }
 }
 

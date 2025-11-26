@@ -7,6 +7,7 @@ An offline-first Android IRC client written in Kotlin with Jetpack Compose. It n
 - Configurable server/port/TLS/nick/user plus SASL credentials and auto-join channel list
 - Multi-buffer sidebar for status, channels, and direct messages with unread/highlight counts (highlight badges survive restarts via the mentions store)
 - Dedicated mentions drawer with a top-bar badge that aggregates highlights across buffers and persists the last 100 entries
+- Full-screen advanced settings sheet that explains highlight rules, ignore lists, NickServ Identify/Register actions, TLS/appearance toggles, quiet hours, and font scaling in grouped sections
 - NickServ helpers, slash commands (`/join`, `/msg`, `/me`, `/raw`, `/search`, etc.), and smart autocomplete suggestions
 - Highlight detection with quiet hours, mute controls, and local notifications (Android 13+ runtime permission aware)
 - Rich link previews for HTTP/HTTPS URLs using a safe, size-limited client-side fetcher inspired by The Lounge preview plugin
