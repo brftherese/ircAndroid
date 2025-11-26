@@ -1,6 +1,11 @@
 # The Lounge Parity Backlog
 
-The Android client should eventually match the end-user abilities exposed by The Lounge (`/home/ftherese/thelounge`). The items below reflect the gaps identified on 2025-11-22.
+The Android client should eventually match the end-user abilities exposed by The Lounge (`/home/ftherese/thelounge`). The list below was refreshed on 2025-11-26 after stabilizing the README/Changelog and GitHub release automation.
+
+## P0 - Build & release hygiene
+
+- [x] Automated GitHub release workflow: signs APKs, attaches SHA256 checksums, and updates tags/releases (landed 2025-11-26).
+- [ ] Play Store prep: create an Internal Testing track, push the `.aab`, and document the publishing checklist.
 
 ## P0 - Core session parity
 
