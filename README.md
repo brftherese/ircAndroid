@@ -5,7 +5,7 @@ An offline-first Android IRC client written in Kotlin with Jetpack Compose. It n
 ## Key Features
 
 - Configurable server/port/TLS/nick/user plus SASL credentials and auto-join channel list
-- Multi-buffer sidebar for status, channels, and direct messages with unread/highlight counts (highlight badges survive restarts via the mentions store)
+- Multi-buffer sidebar for status, channels, and direct messages with unread/highlight counts (highlight badges survive restarts via the mentions store) and inline “×” controls to dismiss service/PM buffers like Auth or ChanServ until they see activity again
 - Dedicated mentions drawer with a top-bar badge that aggregates highlights across buffers and persists the last 100 entries
 - Full-screen advanced settings sheet that explains highlight rules, ignore lists, NickServ Identify/Register actions, TLS/appearance toggles, quiet hours, and font scaling in grouped sections
 - NickServ helpers, slash commands (`/join`, `/msg`, `/me`, `/raw`, `/search`, etc.), and smart autocomplete suggestions
@@ -72,6 +72,7 @@ Then install the APK from `app/build/outputs/apk/debug/` onto a device.
 - Buffers can be muted, marked read, and switched quickly via the sidebar or AssistChip shortcuts.
 - Highlighted mentions per buffer appear as a small red badge on each chip; counts persist thanks to the mentions drawer history until you clear/dismiss them.
 - Sharing a URL automatically spawns a preview card (title + description + host). Tapping the card opens the link; previews are fetched on-device with strict size/time limits to avoid loading unsafe content.
+- Close service or PM chips by tapping the tiny “×” so Auth/ChanServ clutter disappears until a new message arrives.
 
 ### Mentions Drawer
 

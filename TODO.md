@@ -16,6 +16,7 @@ The Android client should eventually match the end-user abilities exposed by The
 - [x] Multi-buffer navigation: implement a proper sidebar (channels, queries, networks, statuses) with unread/highlight counts similar to `client/components/Sidebar.vue`. (Compose sidebar + AssistChips landed 2025-11-23.)
 - [x] Mentions drawer + new message markers: dedicated view of highlights (see `client/components/Mentions.vue`) and global unread separator markers. (Mentions sheet + badges + marker logic landed 2025-11-24.)
 - [x] Orientation resilience: keep the active session, buffer list, and composer input intact across rotation so a landscape switch doesn’t drop you back to Status or force a reconnect.
+- [x] Dismissable service/PM chips: add inline close controls to Auth/ChanServ/PM buffers so the chip row stays focused on the channels you care about.
 - [ ] Rich link previews + media viewer: port The Lounge `prefetch`/`ImageViewer` flow so URLs unfurl (with caching and size limits) and inline image/video modals are available on Android. (Link previews implemented; media viewer + caching still open.)
 - [ ] File uploads: add share sheet + upload handling to parity with `fileUpload` support on the server side.
 - [x] Context menus + moderation tools: long-press actions for kick/ban/voice/op, mirroring `ContextMenu.vue`. _(User list + chat row menus with privilege-aware enablement landed 2025-11-23.)_

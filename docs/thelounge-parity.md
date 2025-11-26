@@ -11,6 +11,7 @@ Last updated: 2025-11-25
 - Local scrollback mirror powered by Room (`ChatDatabase`, `ScrollbackStore`) keeps per-buffer history with 30-day/5k-row caps between launches.
 - Full-screen settings sheet groups Identity, Highlights/Ignores, NickServ/SASL, Connection, Quiet hours, and Text size controls with helper text and NickServ Identify/Register actions so guidance matches The Lounge notifications settings UX.
 - Orientation changes no longer nuke the session UI—connection form values, the active buffer, joined channel list, and composer text all survive rotation via `rememberSaveable` helpers.
+- Private/service buffer chips (Auth, ChanServ, PMs) now expose an inline close action so you can dismiss them just like in The Lounge until new activity brings them back.
 - When reconnecting to channels that advertise `draft/chathistory`, the client now issues `CHATHISTORY AFTER …` requests using the last persisted timestamp so missed messages are replayed automatically.
 - Link previews implemented client-side in `LinkPreview.kt` with Compose cards rendered in chat rows.
 - Notifications + highlight badges via `NotificationHelper.kt`, `AppForeground.kt`, and the persisted mentions store.

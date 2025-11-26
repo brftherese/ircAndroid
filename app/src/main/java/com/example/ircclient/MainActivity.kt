@@ -19,6 +19,7 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,6 +47,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
@@ -654,6 +656,18 @@ private fun MainScreen(
         outgoing = TextFieldValue("")
     }
 
+    fun closeQueryBuffer(name: String) {
+        val idx = queries.indexOfFirst { it.equals(name, ignoreCase = true) }
+        if (idx < 0) return
+        val entry = queries[idx]
+        queries.removeAt(idx)
+        val key = channelKeyOrStatus(entry)
+        buffers[key]?.resetCounts()
+        if (currentChannel?.equals(entry, ignoreCase = true) == true) {
+            currentChannel = null
+        }
+    }
+
     LaunchedEffect(Unit) {
         if (!channelEvents.containsKey(STATUS_CHANNEL_KEY)) {
             channelEvents[STATUS_CHANNEL_KEY] = mutableStateListOf()
@@ -833,6 +847,7 @@ private fun MainScreen(
                 outgoing = TextFieldValue(newText, selection = TextRange(prefix.length))
                 showSuggestions = false
             },
+            onCloseBuffer = { closeQueryBuffer(it) },
             onJoinRequest = { showJoin = true },
             onDisconnect = {
                 onDisconnectRequest()
@@ -1138,6 +1153,7 @@ private fun SessionScreen(
     showSuggestions: Boolean,
     suggestions: List<String>,
     onSuggestionSelected: (String) -> Unit,
+    onCloseBuffer: (String) -> Unit,
     onJoinRequest: () -> Unit,
     onDisconnect: () -> Unit,
     helpText: String?,
@@ -1183,8 +1199,9 @@ private fun SessionScreen(
                     label = "Status",
                     unread = statusUnread,
                     highlight = statusHighlights,
-                    selected = currentChannel == null
-                ) { onChannelChange(null) }
+                    selected = currentChannel == null,
+                    onClick = { onChannelChange(null) }
+                )
                 joinedChannels.forEach { channel ->
                     val key = channelKeyOrStatus(channel)
                     val highlights = highlightCounts[key] ?: 0
@@ -1192,8 +1209,9 @@ private fun SessionScreen(
                         label = channel,
                         unread = buffers[key]?.unread ?: 0,
                         highlight = highlights,
-                        selected = currentChannel?.equals(channel, ignoreCase = true) == true
-                    ) { onChannelChange(channel) }
+                        selected = currentChannel?.equals(channel, ignoreCase = true) == true,
+                        onClick = { onChannelChange(channel) }
+                    )
                 }
                 queries.forEach { dm ->
                     val key = channelKeyOrStatus(dm)
@@ -1202,8 +1220,11 @@ private fun SessionScreen(
                         label = dm,
                         unread = buffers[key]?.unread ?: 0,
                         highlight = highlights,
-                        selected = currentChannel?.equals(dm, ignoreCase = true) == true
-                    ) { onChannelChange(dm) }
+                        selected = currentChannel?.equals(dm, ignoreCase = true) == true,
+                        onClick = { onChannelChange(dm) },
+                        closable = true,
+                        onClose = { onCloseBuffer(dm) }
+                    )
                 }
             }
             Row(
@@ -1303,7 +1324,15 @@ private fun SessionScreen(
 }
 
 @Composable
-private fun BufferChip(label: String, unread: Int, highlight: Int, selected: Boolean, onClick: () -> Unit) {
+private fun BufferChip(
+    label: String,
+    unread: Int,
+    highlight: Int,
+    selected: Boolean,
+    onClick: () -> Unit,
+    closable: Boolean = false,
+    onClose: (() -> Unit)? = null,
+) {
     AssistChip(
         onClick = onClick,
         label = {
@@ -1321,6 +1350,20 @@ private fun BufferChip(label: String, unread: Int, highlight: Int, selected: Boo
                         value = highlight,
                         background = MaterialTheme.colorScheme.errorContainer,
                         content = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+                if (closable && onClose != null) {
+                    val interaction = remember { MutableInteractionSource() }
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "Close ${label}",
+                        tint = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clickable(
+                                interactionSource = interaction,
+                                indication = null
+                            ) { onClose() }
                     )
                 }
             }
