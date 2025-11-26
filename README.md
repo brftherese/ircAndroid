@@ -44,11 +44,11 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 Need a local network to test against? Use `dev/test-irc/` (miniircd + ergo configs) and follow `dev/test-irc/README.md` to launch a throwaway IRC stack in Docker.
 
-Looking for end-user guidance? See the full [User Guide](docs/wiki/user-guide.md) for installation, connection setup, notifications, and troubleshooting tips.
+Looking for end-user guidance? See the hosted [User Guide](https://github.com/brftherese/ircAndroid/wiki/User-Guide) for installation, connection setup, notifications, and troubleshooting tips.
 
 ## Documentation
 
-- `docs/wiki/user-guide.md`: End-user setup and usage guide (installing, connecting, highlights, troubleshooting).
+- [GitHub Wiki: User Guide](https://github.com/brftherese/ircAndroid/wiki/User-Guide): End-user setup and usage guide (installing, connecting, highlights, troubleshooting).
 - `RELEASING.md`: Signing, versioning, and GitHub Actions release process.
 - `CHANGELOG.md`: Release-by-release history.
 - `TODO.md`: Parity roadmap and outstanding work.
