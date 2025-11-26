@@ -84,6 +84,8 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.snapshots.SnapshotStateMap
@@ -223,40 +225,40 @@ private fun MainScreen(
     val chathistoryEnabled by client.chathistoryEnabled.collectAsState(initial = false)
     val sessionActive by sessionState.collectAsState(initial = sessionState.value)
 
-    var server by remember { mutableStateOf("irc.libera.chat") }
-    var portInput by remember { mutableStateOf("6697") }
-    var useTls by remember { mutableStateOf(true) }
-    var nick by remember { mutableStateOf("AndroidUser") }
-    var user by remember { mutableStateOf("android") }
-    var realName by remember { mutableStateOf("Android IRC") }
-    var primaryChannel by remember { mutableStateOf("#android") }
-    var extraChannels by remember { mutableStateOf("") }
-    var highlights by remember { mutableStateOf("") }
-    var highlightExceptions by remember { mutableStateOf("") }
-    var ignoreNicks by remember { mutableStateOf("") }
-    var saslAccount by remember { mutableStateOf("") }
-    var saslPassword by remember { mutableStateOf("") }
-    var stripColors by remember { mutableStateOf(true) }
-    var allowBackgrounds by remember { mutableStateOf(false) }
-    var fontScalePercent by remember { mutableStateOf(100) }
-    var quietHoursEnabled by remember { mutableStateOf(false) }
-    var quietHoursStart by remember { mutableStateOf(23) }
-    var quietHoursEnd by remember { mutableStateOf(7) }
+    var server by rememberSaveable { mutableStateOf("irc.libera.chat") }
+    var portInput by rememberSaveable { mutableStateOf("6697") }
+    var useTls by rememberSaveable { mutableStateOf(true) }
+    var nick by rememberSaveable { mutableStateOf("AndroidUser") }
+    var user by rememberSaveable { mutableStateOf("android") }
+    var realName by rememberSaveable { mutableStateOf("Android IRC") }
+    var primaryChannel by rememberSaveable { mutableStateOf("#android") }
+    var extraChannels by rememberSaveable { mutableStateOf("") }
+    var highlights by rememberSaveable { mutableStateOf("") }
+    var highlightExceptions by rememberSaveable { mutableStateOf("") }
+    var ignoreNicks by rememberSaveable { mutableStateOf("") }
+    var saslAccount by rememberSaveable { mutableStateOf("") }
+    var saslPassword by rememberSaveable { mutableStateOf("") }
+    var stripColors by rememberSaveable { mutableStateOf(true) }
+    var allowBackgrounds by rememberSaveable { mutableStateOf(false) }
+    var fontScalePercent by rememberSaveable { mutableStateOf(100) }
+    var quietHoursEnabled by rememberSaveable { mutableStateOf(false) }
+    var quietHoursStart by rememberSaveable { mutableStateOf(23) }
+    var quietHoursEnd by rememberSaveable { mutableStateOf(7) }
 
-    var currentChannel by remember { mutableStateOf<String?>(null) }
-    var compactMode by remember { mutableStateOf(false) }
-    var outgoing by remember { mutableStateOf(TextFieldValue("")) }
-    var showJoin by remember { mutableStateOf(false) }
-    var showUsers by remember { mutableStateOf(false) }
-    var showSettings by remember { mutableStateOf(false) }
-    var showSearchResults by remember { mutableStateOf(false) }
-    var searchQuery by remember { mutableStateOf("") }
-    var showSuggestions by remember { mutableStateOf(false) }
+    var currentChannel by rememberSaveable { mutableStateOf<String?>(null) }
+    var compactMode by rememberSaveable { mutableStateOf(false) }
+    var outgoing by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
+    var showJoin by rememberSaveable { mutableStateOf(false) }
+    var showUsers by rememberSaveable { mutableStateOf(false) }
+    var showSettings by rememberSaveable { mutableStateOf(false) }
+    var showSearchResults by rememberSaveable { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var showSuggestions by rememberSaveable { mutableStateOf(false) }
 
     val channelEvents = remember { mutableStateMapOf<String, SnapshotStateList<UiEvent>>() }
     val buffers = remember { mutableStateMapOf<String, BufferMeta>() }
-    val joinedChannels = remember { mutableStateListOf<String>() }
-    val queries = remember { mutableStateListOf<String>() }
+    val joinedChannels = rememberSaveable(saver = snapshotStateListSaver<String>()) { mutableStateListOf<String>() }
+    val queries = rememberSaveable(saver = snapshotStateListSaver<String>()) { mutableStateListOf<String>() }
     val muted = remember { mutableStateMapOf<String, Boolean>() }
     val requestedHistory = remember { mutableStateMapOf<String, Boolean>() }
     val lastRead = remember { mutableStateMapOf<String, Long>() }
@@ -1825,6 +1827,11 @@ private fun SettingsToggle(
         }
     }
 }
+
+private fun <T> snapshotStateListSaver() = listSaver<SnapshotStateList<T>, T>(
+    save = { it.toList() },
+    restore = { restored -> mutableStateListOf<T>().apply { addAll(restored) } }
+)
 
 private fun isSameDay(a: Long, b: Long): Boolean {
     val ca = Calendar.getInstance().apply { timeInMillis = a }

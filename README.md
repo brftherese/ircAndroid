@@ -18,6 +18,7 @@ An offline-first Android IRC client written in Kotlin with Jetpack Compose. It n
 - Per-channel search, message history, day dividers, and “new messages” markers
 - Persistent settings via DataStore plus optional compact layout and adjustable font scaling
 - Foreground service + notification controls keep the IRC session alive even when the UI is backgrounded, with a quick action to disconnect from the status shade
+- Orientation-safe UI: rotating between portrait and landscape no longer severs the session or clears the buffer list, so you can keep chatting uninterrupted
 
 ## Project Structure
 
