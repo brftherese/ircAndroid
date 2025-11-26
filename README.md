@@ -30,6 +30,12 @@ An offline-first Android IRC client written in Kotlin with Jetpack Compose. It n
 - Android SDK: compile/target SDK 34, min SDK 24
 - Temurin/OpenJDK 21 (matches the CI workflow and enables the new Room/KSP toolchain)
 
+## Build Troubleshooting
+
+- If Gradle exits with `Execution failed for JdkImageTransform` / `androidJdkImage`, it means the build cannot find a working `jlink` binary. The fix that consistently works in WSL and Linux is to install the full OpenJDK 17 toolchain (`sudo apt install openjdk-17-jdk openjdk-17-jre`) because the headless packages omit `jlink` ([Stack Overflow, Dimitri Petrov, May 2024](https://stackoverflow.com/a/78493625)).
+- Point Gradle at that toolchain by exporting `JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64` (or configuring Android Studio ➜ Build Tools ➜ Gradle ➜ Gradle JDK to the same path). The repo also sets `org.gradle.java.home=/usr/lib/jvm/java-17-openjdk-amd64` in `gradle.properties` so IDE-driven builds pick up the right toolchain automatically.
+- If the issue persists after installing JDK 17, re-run `./gradlew --stop && ./gradlew clean assembleDebug` to flush any daemons that were still using the old JDK. As a last resort, downgrade AGP to 8.4.2; multiple reports confirm newer AGP releases exercise the `androidJdkImage` transform more aggressively ([Stack Overflow question 69619829](https://stackoverflow.com/questions/69619829/could-not-resolve-all-files-for-configuration-appandroidjdkimage)).
+
 ## Getting Started
 
 Open the project in Android Studio and let it sync. Build and run on a device/emulator with network access. The repository already includes a Gradle wrapper, so no additional setup is required.
