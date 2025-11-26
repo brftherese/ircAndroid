@@ -36,11 +36,14 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          packages: |-
-            build-tools;${{ env.ANDROID_BUILD_TOOLS }}
-            platforms;android-${{ env.ANDROID_COMPILE_SDK }}
-            platform-tools
+
+      - name: Install SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null
+          yes | sdkmanager \
+            "build-tools;${{ env.ANDROID_BUILD_TOOLS }}" \
+            "platforms;android-${{ env.ANDROID_COMPILE_SDK }}" \
+            "platform-tools"
 
       - name: Decode release keystore
         run: |

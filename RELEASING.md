@@ -151,6 +151,7 @@ Add the following repository secrets so the workflow can sign builds:
 Then the workflow will:
 
 - Set up JDK 21 + Android SDK
+- Install platform tools/build-tools via an explicit `sdkmanager` step so each package is requested separately
 - Recreate `local.properties` using the secrets and decode the keystore
 - Run `./gradlew assembleRelease`
 - Upload the APK and SHA256 checksum as workflow artifacts and as GitHub release assets (creating/updating the release for the tag)
