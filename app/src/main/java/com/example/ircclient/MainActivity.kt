@@ -113,6 +113,8 @@ import com.example.ircclient.ui.theme.AppTheme
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.format.DateTimeFormatter
 import java.util.Calendar
 import kotlin.math.roundToInt
 
@@ -212,6 +214,7 @@ private fun MainScreen(
     val connected by client.connected.collectAsState(initial = false)
     val echoEnabled by client.echoEnabled.collectAsState(initial = false)
     val users by client.users.collectAsState(initial = emptyList())
+    val chathistoryEnabled by client.chathistoryEnabled.collectAsState(initial = false)
     val sessionActive by sessionState.collectAsState(initial = sessionState.value)
 
     var server by remember { mutableStateOf("irc.libera.chat") }
@@ -249,6 +252,7 @@ private fun MainScreen(
     val joinedChannels = remember { mutableStateListOf<String>() }
     val queries = remember { mutableStateListOf<String>() }
     val muted = remember { mutableStateMapOf<String, Boolean>() }
+    val requestedHistory = remember { mutableStateMapOf<String, Boolean>() }
     val lastRead = remember { mutableStateMapOf<String, Long>() }
     val inputHistories = remember { mutableStateMapOf<String, MutableList<String>>() }
     val inputHistoryPos = remember { mutableStateMapOf<String, Int>() }
@@ -296,6 +300,25 @@ private fun MainScreen(
                 queries.sortBy { it.lowercase() }
             }
         }
+    }
+
+    LaunchedEffect(connected) {
+        if (!connected) requestedHistory.clear()
+    }
+
+    LaunchedEffect(connected, chathistoryEnabled, joinedChannels.toList()) {
+        if (!connected || !chathistoryEnabled) return@LaunchedEffect
+        joinedChannels
+            .filter { it.startsWith("#") && it.isNotBlank() }
+            .forEach { channel ->
+                val key = channelKeyOrStatus(channel)
+                if (requestedHistory.containsKey(key)) return@forEach
+                requestedHistory[key] = true
+                val stateLast = channelEvents[key]?.lastOrNull()?.time
+                val lastTimestamp = stateLast ?: scrollbackStore.latestTimestamp(key)
+                val cursor = lastTimestamp?.let(::formatAsChathistoryCursor)
+                client.requestChatHistory(channel, cursor, CHATHISTORY_FETCH_LIMIT)
+            }
     }
 
     fun currentConfig(): SavedConfig = SavedConfig(
@@ -1614,6 +1637,9 @@ private fun isSameDay(a: Long, b: Long): Boolean {
     return ca.get(Calendar.YEAR) == cb.get(Calendar.YEAR) && ca.get(Calendar.DAY_OF_YEAR) == cb.get(Calendar.DAY_OF_YEAR)
 }
 
+private fun formatAsChathistoryCursor(epochMillis: Long): String =
+    CHATHISTORY_FORMATTER.format(Instant.ofEpochMilli(epochMillis))
+
 @Composable
 private fun AutoJoinOnConnect(connected: Boolean, channels: List<String>, client: IrcClient) {
     LaunchedEffect(connected) {
@@ -2717,6 +2743,9 @@ private fun quietHoursWindowLabel(start: Int, end: Int): String {
 private const val STATUS_CHANNEL_KEY = "_status"
 private const val MAX_MENTIONS = 100
 private const val SCROLLBACK_SEED_LIMIT = 500
+private const val CHATHISTORY_FETCH_LIMIT = 200
+
+private val CHATHISTORY_FORMATTER: DateTimeFormatter = DateTimeFormatter.ISO_INSTANT
 
 private fun channelKeyOrStatus(name: String?): String = name?.takeIf { it.isNotBlank() }?.lowercase() ?: STATUS_CHANNEL_KEY
 

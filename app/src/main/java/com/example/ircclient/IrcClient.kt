@@ -58,6 +58,7 @@ class IrcClient(
     private var capsAcked: MutableSet<String> = mutableSetOf()
     private var negotiatingCaps = false
     private var saslPending = false
+    private var preferredChathistoryCap: String? = null
 
     private var lastConfig: Config? = null
     private var activeNetwork: Network? = null
@@ -77,6 +78,9 @@ class IrcClient(
 
     private val _users = MutableStateFlow<List<ChannelUser>>(emptyList())
     val users: StateFlow<List<ChannelUser>> = _users
+
+    private val _chathistoryEnabled = MutableStateFlow(false)
+    val chathistoryEnabled: StateFlow<Boolean> = _chathistoryEnabled
 
     val incoming = MutableSharedFlow<String>(
         replay = 0,
@@ -122,6 +126,8 @@ class IrcClient(
                 wantCaps.clear()
                 _echoEnabled.value = false
                 saslPending = false
+                _chathistoryEnabled.value = false
+                preferredChathistoryCap = null
 
                 if (config.requestCaps) {
                     sendRaw("CAP LS 302")
@@ -378,6 +384,14 @@ class IrcClient(
                 if ("echo-message" in offered) req += "echo-message"
                 if ("server-time" in offered) req += "server-time"
                 if (config.saslAccount != null && config.saslPassword != null && "sasl" in offered) req += "sasl"
+                preferredChathistoryCap = when {
+                    offered.any { it.equals("draft/chathistory", true) } -> "draft/chathistory"
+                    offered.any { it.equals("chathistory", true) } -> "chathistory"
+                    else -> null
+                }
+                preferredChathistoryCap?.let { cap ->
+                    if (cap !in capsAcked) req += cap
+                }
                 // Only request what we don't already have
                 val toReq = req.filter { it !in capsAcked }
                 if (toReq.isNotEmpty()) {
@@ -393,6 +407,9 @@ class IrcClient(
                 if (acked.any { it.equals("echo-message", true) }) {
                     _echoEnabled.value = true
                 }
+                if (acked.any { it.equals("draft/chathistory", true) || it.equals("chathistory", true) }) {
+                    _chathistoryEnabled.value = true
+                }
                 if (acked.any { it.equals("sasl", true) }) {
                     // Start SASL PLAIN
                     if (config.saslAccount != null && config.saslPassword != null) {
@@ -407,6 +424,10 @@ class IrcClient(
                 }
             }
             "NAK" -> {
+                val payload = msg.trailing ?: ""
+                if (payload.contains("chathistory", ignoreCase = true)) {
+                    _chathistoryEnabled.value = false
+                }
                 endCapIfReady()
             }
         }
@@ -465,6 +486,17 @@ class IrcClient(
 
     fun requestNames(channel: String) = sendRaw("NAMES ${channel}")
 
+    fun requestChatHistory(channel: String, afterTimestamp: String?, limit: Int) {
+        if (!_chathistoryEnabled.value) return
+        val batch = limit.coerceIn(1, 500)
+        val command = if (afterTimestamp.isNullOrBlank()) {
+            "CHATHISTORY LATEST ${channel} * ${batch}"
+        } else {
+            "CHATHISTORY AFTER ${channel} ${afterTimestamp} ${batch}"
+        }
+        sendRaw(command)
+    }
+
     fun quit(message: String = "Bye") {
         sendRaw("QUIT :${message}")
         disconnect()
@@ -485,6 +517,7 @@ class IrcClient(
         } catch (_: Throwable) {}
         readJob?.cancel()
         _connected.value = false
+        _chathistoryEnabled.value = false
     }
 
     fun reconnectNow() {

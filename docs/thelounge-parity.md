@@ -9,6 +9,7 @@ Last updated: 2025-11-25
 - `app/src/main/java/com/example/ircclient/MainActivity.kt` + Compose UI: multi-buffer chat, sidebar, mentions drawer, slash commands, moderation menus, search, quiet hours, notifications (summarized in `README.md`).
 - Persistence uses DataStore helpers in `Prefs.kt`, `MentionsStore.kt`, and `NetworkProfilesStore.kt` for settings, highlights, and saved network profiles.
 - Local scrollback mirror powered by Room (`ChatDatabase`, `ScrollbackStore`) keeps per-buffer history with 30-day/5k-row caps between launches.
+- When reconnecting to channels that advertise `draft/chathistory`, the client now issues `CHATHISTORY AFTER …` requests using the last persisted timestamp so missed messages are replayed automatically.
 - Link previews implemented client-side in `LinkPreview.kt` with Compose cards rendered in chat rows.
 - Notifications + highlight badges via `NotificationHelper.kt`, `AppForeground.kt`, and the persisted mentions store.
 - Saved network profiles selectable in the connection form (profile picker Compose UI).
@@ -31,7 +32,7 @@ Last updated: 2025-11-25
 | Link previews | `client/js/plugins/preview.js`, `client/components/Message.vue` | ✅ Implemented (`LinkPreview.kt`, Compose cards) | Currently first-URL only; lacks caching/policy toggles. |
 | Multi-network profiles | `client/components/NetworkForm.vue` + server connection handling | ⚠️ Partial (`NetworkProfilesStore.kt`) | Profiles saved/switchable, but only one active network connection at a time; no simultaneous multi-network buffers. |
 | Always-on host & auth | `server/server.ts`, `server/clientManager.ts`, plugins `auth/*` | ⚠️ Partial (`ConnectionService.kt`) | Foreground service keeps a single-user session alive with notification controls, but we still lack multi-user auth and a true daemon like The Lounge server. |
-| Server-side history/logging | `server/plugins/messageStorage/*`, `storageCleaner.ts` | ⚠️ Partial | Local Room cache mirrors TL scrollback behavior for 30 days, but there is no multi-device sync or true server-side storage yet. |
+| Server-side history/logging | `server/plugins/messageStorage/*`, `storageCleaner.ts` | ⚠️ Partial | Local Room cache mirrors TL scrollback, and we now request `CHATHISTORY` playback on reconnect, but there is still no multi-device sync or true server-side storage yet. |
 | Web push / offline alerts | `server/plugins/webpush.ts`, client `Windows/Notifications.vue` | ❌ Missing | Android has local notifications only; no push relay or sync to other devices. |
 | File uploads / media proxy | `server/plugins/uploader.ts`, `client/components/ChatInput.vue` | ❌ Missing | No upload UI, storage, or proxy handling in Android app. |
 | Prefetch policies & caching | `defaults/config.js` (`prefetch*` keys), `server/plugins/storage.ts` | ⚠️ Partial | Client fetches previews without cached storage or user-configurable caps. |
@@ -71,10 +72,16 @@ Last updated: 2025-11-25
 - **Android plan:** Expand `SavedConfig` into a list stored via DataStore, provide UI for adding/editing networks, and spin up separate `IrcClient` instances (or sequential connect) per network.
 - **Status:** Added client-side profile store (`NetworkProfilesStore.kt`) with JSON DataStore persistence, Compose picker on the connection form, and a manager dialog for add/rename/delete. We still connect to one network at a time, but swapping between saved configs is now parity-friendly.
 
+### History Replay & CHATHISTORY
+
+- **Upstream reference:** Lounge servers emit playback via `CHATHISTORY`/`znc.in/playback` so reconnecting clients instantly backfill buffers.
+- **Android plan:** Detect the `draft/chathistory` (or `chathistory`) capability during CAP negotiation, store the last persisted timestamp per buffer, and issue `CHATHISTORY AFTER <channel> <timestamp> <limit>` once per reconnect.
+- **Status:** `IrcClient` now requests the capability and exposes `chathistoryEnabled`. `MainActivity` tracks joined channels and, after reconnect, asks for up to 200 events per channel using the last timestamp from Room if available, or falls back to `LATEST` for brand-new buffers. This keeps scrollback aligned with The Lounge’s auto-playback behavior whenever the server supports it.
+
 ## Parity Gaps & Opportunities (Nov 25, 2025 Audit)
 
 1. **Always-on multi-user host** — The Lounge’s Node.js daemon (`server/server.ts`, `server/clientManager.ts`) supports private/public deployments, authentication, and keeps IRC connections alive even when users disconnect. `ConnectionService.kt` now mirrors the “always connected” behavior for a single user via a foreground service + persistent notification, but there is still no multi-user auth, shared daemon, or server-side resume/log-out workflow.
-2. **Server-side history + log storage** — Upstream persists scrollback via the `server/plugins/messageStorage/*` (SQLite/text) and exposes cleanup policies (`storageCleaner.ts`). Our local Room cache now mirrors 30-day / 5k-row history per buffer, but there is still no multi-device sync or server-authoritative log. Action: explore syncing the Room store with a Lounge backend or consuming CHATHISTORY endpoints for full parity.
+2. **Server-side history + log storage** — Upstream persists scrollback via the `server/plugins/messageStorage/*` (SQLite/text) and exposes cleanup policies (`storageCleaner.ts`). Our local Room cache mirrors 30-day / 5k-row history per buffer and we now consume `CHATHISTORY` to fill gaps after reconnects, but there is still no multi-device sync or server-authoritative log. Action: explore syncing the Room store with a Lounge backend for a single source of truth.
 3. **Web push + notification relays** — Files like `server/plugins/webpush.ts` integrate with browsers for push notifications and offline alerts. Android-only local notifications fire for highlights, but we lack any push subscription or relay for other devices. Action: decide whether to integrate with Firebase Cloud Messaging or bridge to a Lounge host.
 4. **File upload + media proxy** — TL ships uploader hooks (`server/plugins/uploader.ts`) and client UI (drag-and-drop in `client/components/ChatInput.vue`, previews in `client/components/Message.vue`). Our app has no upload feature, no proxying of HTTP assets, and no storage/quota UI. Action: spec an Android share-sheet upload flow targeting a configurable Lounge uploader endpoint.
 5. **Prefetch storage + media policies** — Beyond simple OpenGraph fetches, TL can cache thumbnails via `prefetchStorage` and enforce size caps/config toggles (see `defaults/config.js`’s `prefetch*` keys). Android currently fetches previews client-side without caching, proxying, or user settings. Action: expose preview toggles in Settings and cache responses per URL with eviction.

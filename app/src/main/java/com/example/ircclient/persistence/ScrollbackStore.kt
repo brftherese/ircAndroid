@@ -43,6 +43,10 @@ class ScrollbackStore(
         dao.deleteOlderThan(expirationCutoff())
     }
 
+    suspend fun latestTimestamp(bufferKey: String): Long? = withContext(dispatcher) {
+        dao.latestTimestamp(bufferKey)
+    }
+
     private suspend fun pruneInternal(bufferKey: String) {
         val cutoff = expirationCutoff()
         dao.deleteOlderThan(cutoff)

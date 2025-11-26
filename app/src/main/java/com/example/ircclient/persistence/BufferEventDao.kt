@@ -23,6 +23,16 @@ interface BufferEventDao {
     )
     suspend fun latestForBuffer(bufferKey: String, limit: Int): List<BufferEventEntity>
 
+    @Query(
+        """
+        SELECT time FROM buffer_events
+        WHERE buffer_key = :bufferKey
+        ORDER BY time DESC
+        LIMIT 1
+        """
+    )
+    suspend fun latestTimestamp(bufferKey: String): Long?
+
     @Query("DELETE FROM buffer_events WHERE time < :cutoff")
     suspend fun deleteOlderThan(cutoff: Long): Int
 

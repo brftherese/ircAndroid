@@ -7,7 +7,7 @@ The Android client should eventually match the end-user abilities exposed by The
 - [x] Multi-network profiles: allow adding, editing, and switching between multiple server configs instead of the single `SavedConfig` record in `Prefs.kt`. (`NetworkProfilesStore.kt` + Compose profile picker landed 2025-11-23.)
 - [x] Always-on connections: move `IrcClient` into a foreground service with notification controls so the app remains connected when the UI process dies, mirroring The Lounge's persistent Node.js backend. (`ConnectionService` + session notification landed 2025-11-25.)
 - [x] Durable history: replace the in-memory `channelEvents` map in `MainActivity.kt` with a Room/SQLCipher store so scrollback survives process death and can grow to `maxHistory`-like limits. (`ScrollbackStore` + Room/KSP integration landed 2025-11-25 with 30-day/5k-row retention.)
-- [ ] Replay + sync: on reconnect, fetch playback via `CHATHISTORY`/`znc.in/playback` if offered, similar to how The Lounge backfills channels for late clients.
+- [x] Replay + sync: on reconnect, fetch playback via `CHATHISTORY` if the server offers it so buffers pick up anything we missed while offline. (`MainActivity` now requests CHATHISTORY for each joined channel once per reconnect using the last persisted timestamp.)
 - [ ] Capability negotiation parity: add support for `monitor`, `away-notify`, `account-tag`, `message-tags`, `setname`, and webirc/STS toggles exposed in `defaults/config.js`.
 - [ ] SASL + NickServ UX: surface dedicated flows for logging in/registering, and store encrypted credentials, matching the guided actions The Lounge exposes in its connect dialog.
 

@@ -4,10 +4,10 @@ This guide covers building a signed release APK/App Bundle and publishing to Goo
 
 ## Prereqs
 
-- Temurin/OpenJDK 21 with `jlink` available (the GitHub Actions workflow uses Temurin 21). Set `JAVA_HOME` accordingly, e.g.:
+- Temurin/OpenJDK 17 with `jlink` available (the GitHub Actions workflow uses Temurin 17). Set `JAVA_HOME` accordingly, e.g.:
 
 ```bash
-export JAVA_HOME="$HOME/.jdks/jdk-21.0.9+10"
+export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
 ```
 
 - Android SDK installed (`$HOME/Android/Sdk`) and `platform-tools` on your PATH
@@ -19,14 +19,14 @@ export JAVA_HOME="$HOME/.jdks/jdk-21.0.9+10"
 - Release APK:
 
 ```bash
-JAVA_HOME="$HOME/.jdks/jdk-21.0.9+10" ./gradlew assembleRelease
+JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64" ./gradlew assembleRelease
 # Output: app/build/outputs/apk/release/app-release.apk
 ```
 
 - Play App Bundle (recommended for Play Console):
 
 ```bash
-JAVA_HOME="$HOME/.jdks/jdk-21.0.9+10" ./gradlew bundleRelease
+JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64" ./gradlew bundleRelease
 # Output: app/build/outputs/bundle/release/app-release.aab
 ```
 

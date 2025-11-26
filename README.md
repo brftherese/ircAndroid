@@ -12,6 +12,7 @@ An offline-first Android IRC client written in Kotlin with Jetpack Compose. It n
 - Rich link previews for HTTP/HTTPS URLs using a safe, size-limited client-side fetcher inspired by The Lounge preview plugin
 - Multiple saved network profiles so you can jump between servers/accounts without retyping credentials
 - Room-powered scrollback cache that restores the most recent 30 days / 5k events per buffer instantly on launch and survives process restarts
+- Automatic history replay whenever the server advertises `draft/chathistory`: on reconnect the client issues `CHATHISTORY AFTER …` per joined channel so anything that happened while you were offline is backfilled immediately.
 - Contextual moderation menus: long-press members or chat messages to op/deop/voice/kick/ban when your channel mode allows it
 - Per-channel search, message history, day dividers, and “new messages” markers
 - Persistent settings via DataStore plus optional compact layout and adjustable font scaling
@@ -28,7 +29,7 @@ An offline-first Android IRC client written in Kotlin with Jetpack Compose. It n
 
 - Android Studio (Giraffe+ recommended) or Gradle 8.5+
 - Android SDK: compile/target SDK 34, min SDK 24
-- Temurin/OpenJDK 21 (matches the CI workflow and enables the new Room/KSP toolchain)
+- Temurin/OpenJDK 17 with `jlink` available (set `JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64` globally so Gradle and Android Studio both launch with the same toolchain)
 
 ## Build Troubleshooting
 
