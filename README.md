@@ -1,6 +1,6 @@
 # IRC Android Client
 
-> Offline-first IRC for Android with Jetpack Compose, Room scrollback, and feature parity goals inspired by The Lounge.
+> Offline-first (history, highlights, and settings remain available without a live connection) IRC for Android with Jetpack Compose, Room scrollback, and feature parity goals inspired by The Lounge.
 
 ## About
 
