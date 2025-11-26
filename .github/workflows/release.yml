@@ -47,6 +47,11 @@ jobs:
 
       - name: Decode release keystore
         run: |
+          mkdir -p keystore
+          if [ -z "$RELEASE_KEYSTORE_B64" ]; then
+            echo "RELEASE_KEYSTORE_B64 secret is missing" >&2
+            exit 1
+          fi
           echo "$RELEASE_KEYSTORE_B64" | base64 -d > keystore/ircclient.keystore
         env:
           RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}

@@ -136,7 +136,7 @@ We ship artifacts automatically via `.github/workflows/release.yml`.
 
 Add the following repository secrets so the workflow can sign builds:
 
-- `RELEASE_KEYSTORE_B64`: Base64-encoded contents of `keystore/ircclient.keystore`
+- `RELEASE_KEYSTORE_B64`: Base64-encoded contents of `keystore/ircclient.keystore` (the workflow now fails fast if this secret is missing or blank, so verify it before tagging)
 - `RELEASE_STORE_PASSWORD`: Password for the keystore
 - `RELEASE_KEY_ALIAS`: Alias defined inside the keystore
 - `RELEASE_KEY_PASSWORD`: Password for the alias
