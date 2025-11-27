@@ -19,6 +19,8 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -45,6 +47,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
@@ -93,7 +96,9 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -106,9 +111,11 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
+import coil.compose.SubcomposeAsyncImage
 import com.example.ircclient.MentionBufferKind
 import com.example.ircclient.MentionEntry
 import com.example.ircclient.NetworkProfile
@@ -242,6 +249,7 @@ private fun MainScreen(
     var saslPassword by rememberSaveable { mutableStateOf("") }
     var stripColors by rememberSaveable { mutableStateOf(true) }
     var allowBackgrounds by rememberSaveable { mutableStateOf(false) }
+    var linkPreviewsEnabled by rememberSaveable { mutableStateOf(true) }
     var fontScalePercent by rememberSaveable { mutableStateOf(100) }
     var quietHoursEnabled by rememberSaveable { mutableStateOf(false) }
     var quietHoursStart by rememberSaveable { mutableStateOf(23) }
@@ -256,6 +264,7 @@ private fun MainScreen(
     var showSearchResults by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var showSuggestions by rememberSaveable { mutableStateOf(false) }
+    var mediaViewerUrl by rememberSaveable { mutableStateOf<String?>(null) }
 
     val channelEvents = remember { mutableStateMapOf<String, SnapshotStateList<UiEvent>>() }
     val buffers = remember { mutableStateMapOf<String, BufferMeta>() }
@@ -347,6 +356,7 @@ private fun MainScreen(
         saslPassword = saslPassword,
         stripColors = stripColors,
         allowBackgrounds = allowBackgrounds,
+        linkPreviewsEnabled = linkPreviewsEnabled,
         fontScalePercent = fontScalePercent,
         quietHoursEnabled = quietHoursEnabled,
         quietHoursStart = quietHoursStart,
@@ -370,6 +380,7 @@ private fun MainScreen(
         saslPassword = cfg.saslPassword
         stripColors = cfg.stripColors
         allowBackgrounds = cfg.allowBackgrounds
+        linkPreviewsEnabled = cfg.linkPreviewsEnabled
         fontScalePercent = cfg.fontScalePercent
         quietHoursEnabled = cfg.quietHoursEnabled
         quietHoursStart = cfg.quietHoursStart
@@ -462,6 +473,12 @@ private fun MainScreen(
         buffers[bufferKey]?.resetCounts()
     }
 
+    fun clearPreviewCache() {
+        mediaViewerUrl = null
+        linkPreviewStates.clear()
+        LinkPreviewCache.clear()
+    }
+
     fun resetSessionState() {
         joinedChannels.clear()
         queries.clear()
@@ -474,6 +491,7 @@ private fun MainScreen(
         channelEvents[STATUS_CHANNEL_KEY] = mutableStateListOf()
         buffers[STATUS_CHANNEL_KEY] = BufferMeta("Status", BufferType.STATUS)
         currentChannel = null
+        clearPreviewCache()
     }
 
     fun appendEvent(event: UiEvent) {
@@ -812,6 +830,7 @@ private fun MainScreen(
                     connected = connected,
                     nick = nick,
                     linkPreviewStates = linkPreviewStates,
+                    linkPreviewsEnabled = linkPreviewsEnabled,
                     highlightCounts = highlightCounts,
                     mentionsCount = mentions.count { !it.dismissed },
                     onMentions = { showMentions = true },
@@ -860,6 +879,7 @@ private fun MainScreen(
                     helpText = helpText,
                     onShowUsers = { showUsers = true },
                     onShowSettings = { showSettings = true },
+                    onOpenMedia = { mediaViewerUrl = it },
                     onChatLongPress = onChatLongPress@{ chat ->
                         if (!moderationEnabled) return@onChatLongPress
                         if (chat.nick.equals(nick, ignoreCase = true)) return@onChatLongPress
@@ -941,6 +961,15 @@ private fun MainScreen(
             onStripColorsChange = { stripColors = it },
             allowBackgrounds = allowBackgrounds,
             onAllowBackgroundChange = { allowBackgrounds = it },
+            linkPreviewsEnabled = linkPreviewsEnabled,
+            onLinkPreviewsEnabledChange = {
+                linkPreviewsEnabled = it
+                if (!it) {
+                    mediaViewerUrl = null
+                    clearPreviewCache()
+                }
+            },
+            onClearLinkPreviewCache = { clearPreviewCache() },
             forceLightTheme = forceLightTheme,
             onForceLightThemeChange = { forceLightTheme = it },
             useTls = useTls,
@@ -954,6 +983,11 @@ private fun MainScreen(
             fontScalePercent = fontScalePercent,
             onFontScaleChange = { fontScalePercent = it },
             client = client
+        )
+
+        MediaViewerDialog(
+            imageUrl = mediaViewerUrl,
+            onDismiss = { mediaViewerUrl = null }
         )
 
     ModerationActionDialog(
@@ -1137,6 +1171,7 @@ private fun SessionScreen(
     connected: Boolean,
     nick: String,
     linkPreviewStates: SnapshotStateMap<String, LinkPreviewState>,
+    linkPreviewsEnabled: Boolean,
     highlightCounts: Map<String, Int>,
     mentionsCount: Int,
     onMentions: () -> Unit,
@@ -1169,6 +1204,7 @@ private fun SessionScreen(
     helpText: String?,
     onShowUsers: () -> Unit,
     onShowSettings: () -> Unit,
+    onOpenMedia: (String) -> Unit,
     onChatLongPress: (UiEvent.Chat) -> Unit,
 ) {
     Scaffold(
@@ -1274,7 +1310,7 @@ private fun SessionScreen(
                         NewMessagesDivider()
                     }
                     when (event) {
-                        is UiEvent.Chat -> ChatRow(event, nick, stripColors, allowBackgrounds, fontScale, compactMode, linkPreviewStates) { onChatLongPress(event) }
+                        is UiEvent.Chat -> ChatRow(event, nick, stripColors, allowBackgrounds, fontScale, compactMode, linkPreviewStates, linkPreviewsEnabled, onOpenMedia) { onChatLongPress(event) }
                         is UiEvent.Notice -> MetaRow("Notice from ${event.nick ?: "server"}: ${event.text}", stripColors, allowBackgrounds, fontScale, compactMode)
                         is UiEvent.Join -> MetaRow("${event.nick} joined ${event.channel}", fontScale = fontScale, compact = compactMode)
                         is UiEvent.Part -> MetaRow("${event.nick} left ${event.channel}${event.reason?.let { ": $it" } ?: ""}", fontScale = fontScale, compact = compactMode)
@@ -1551,6 +1587,65 @@ private fun MentionRow(entry: MentionEntry, onJump: (MentionEntry) -> Unit) {
 }
 
 @Composable
+private fun MediaViewerDialog(imageUrl: String?, onDismiss: () -> Unit) {
+    if (imageUrl.isNullOrBlank()) return
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 360.dp),
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = 0.dp,
+            color = Color.Black
+        ) {
+            Box(Modifier.fillMaxSize().background(Color.Black)) {
+                var scale by remember(imageUrl) { mutableStateOf(1f) }
+                var offset by remember(imageUrl) { mutableStateOf(Offset.Zero) }
+                val transformState = rememberTransformableState { zoomChange, panChange, _ ->
+                    val newScale = (scale * zoomChange).coerceIn(1f, 4f)
+                    scale = newScale
+                    offset = if (newScale == 1f) Offset.Zero else offset + panChange
+                }
+
+                SubcomposeAsyncImage(
+                    model = imageUrl,
+                    contentDescription = "Expanded media preview",
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .transformable(transformState)
+                        .graphicsLayer(
+                            scaleX = scale,
+                            scaleY = scale,
+                            translationX = offset.x,
+                            translationY = offset.y
+                        ),
+                    contentScale = ContentScale.Fit,
+                    loading = {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = Color.White)
+                        }
+                    },
+                    error = {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("Unable to load", color = Color.White)
+                        }
+                    }
+                )
+
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                ) {
+                    Icon(Icons.Filled.Close, contentDescription = "Close media viewer", tint = Color.White)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun SearchResultsDialog(show: Boolean, query: String, results: List<SearchHit>, onDismiss: () -> Unit) {
     if (!show) return
     AlertDialog(
@@ -1603,6 +1698,9 @@ private fun SettingsDialog(
     onStripColorsChange: (Boolean) -> Unit,
     allowBackgrounds: Boolean,
     onAllowBackgroundChange: (Boolean) -> Unit,
+    linkPreviewsEnabled: Boolean,
+    onLinkPreviewsEnabledChange: (Boolean) -> Unit,
+    onClearLinkPreviewCache: () -> Unit,
     forceLightTheme: Boolean,
     onForceLightThemeChange: (Boolean) -> Unit,
     useTls: Boolean,
@@ -1771,6 +1869,26 @@ private fun SettingsDialog(
                             onCheckedChange = onForceLightThemeChange
                         )
                     }
+                }
+
+                SettingsSection(
+                    title = "Link previews",
+                    description = "Control metadata fetching and local cache usage.",
+                ) {
+                    SettingsToggle(
+                        label = "Show link previews",
+                        caption = "Fetch the first link in each message and inline the summary card.",
+                        checked = linkPreviewsEnabled,
+                        onCheckedChange = onLinkPreviewsEnabledChange
+                    )
+                    OutlinedButton(onClick = onClearLinkPreviewCache) {
+                        Text("Clear cached previews")
+                    }
+                    Text(
+                        "Removes downloaded preview data from this device.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
                 }
 
                 SettingsSection(
@@ -2231,6 +2349,8 @@ private fun ChatRow(
     fontScale: Float,
     compact: Boolean,
     linkPreviewStates: SnapshotStateMap<String, LinkPreviewState>,
+    linkPreviewsEnabled: Boolean,
+    onOpenMedia: (String) -> Unit,
     onLongPress: (() -> Unit)? = null,
 ) {
     val isSelf = ev.nick.equals(selfNick, ignoreCase = true)
@@ -2259,8 +2379,8 @@ private fun ChatRow(
             val annotated = remember(ev.text, stripColors, allowBackgrounds) { formatIrcAnnotated(ev.text, stripColors = stripColors, allowBackgrounds = allowBackgrounds) }
             LinkableAnnotatedText(annotated = annotated, style = baseStyle.copy(fontSize = baseStyle.fontSize * fontScale))
             val firstUrl = remember(ev.text) { extractFirstUrl(ev.text) }
-            if (firstUrl != null) {
-                LinkPreviewCard(firstUrl, linkPreviewStates)
+            if (firstUrl != null && linkPreviewsEnabled) {
+                LinkPreviewCard(firstUrl, linkPreviewStates, onOpenMedia)
             }
         }
         Text(time, style = MaterialTheme.typography.labelSmall, color = Color.Gray, modifier = Modifier.padding(start = 8.dp))
@@ -2427,7 +2547,7 @@ private fun LinkableAnnotatedText(
 }
 
 @Composable
-private fun LinkPreviewCard(url: String, states: SnapshotStateMap<String, LinkPreviewState>) {
+private fun LinkPreviewCard(url: String, states: SnapshotStateMap<String, LinkPreviewState>, onOpenMedia: (String) -> Unit) {
     var state = states[url]
     if (state == null) {
         val cached = LinkPreviewCache.get(url)
@@ -2465,7 +2585,7 @@ private fun LinkPreviewCard(url: String, states: SnapshotStateMap<String, LinkPr
     }
 
     when (status) {
-        PreviewStatus.Success -> state?.preview?.let { PreviewContentCard(it) }
+        PreviewStatus.Success -> state?.preview?.let { PreviewContentCard(it, onOpenMedia) }
         PreviewStatus.Loading -> PreviewLoadingCard()
         PreviewStatus.Failed -> PreviewErrorCard {
             LinkPreviewCache.invalidate(url)
@@ -2476,9 +2596,10 @@ private fun LinkPreviewCard(url: String, states: SnapshotStateMap<String, LinkPr
 }
 
 @Composable
-private fun PreviewContentCard(preview: LinkPreview) {
+private fun PreviewContentCard(preview: LinkPreview, onOpenMedia: (String) -> Unit) {
     val context = LocalContext.current
     val host = remember(preview.url) { Uri.parse(preview.url).host ?: preview.url }
+    val imageUrl = preview.imageUrl
     Surface(
         shape = MaterialTheme.shapes.small,
         tonalElevation = 2.dp,
@@ -2491,7 +2612,35 @@ private fun PreviewContentCard(preview: LinkPreview) {
                 }
             }
     ) {
-        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (!imageUrl.isNullOrBlank()) {
+                SubcomposeAsyncImage(
+                    model = imageUrl,
+                    contentDescription = "Link preview image",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 140.dp, max = 220.dp)
+                        .clip(MaterialTheme.shapes.extraSmall)
+                        .clickable { onOpenMedia(imageUrl) },
+                    contentScale = ContentScale.Crop,
+                    loading = {
+                        Box(Modifier.fillMaxWidth().heightIn(min = 140.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
+                    },
+                    error = {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 140.dp)
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Image unavailable", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                )
+            }
             Text(host, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
             preview.title?.takeIf { it.isNotBlank() }?.let {
                 Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)

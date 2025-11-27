@@ -8,8 +8,16 @@ All notable changes to this project are documented in this file. The format roug
 
 -
 
+### Pending Changes
+
+- _Nothing yet._
+
+## [1.3.0] - 2025-11-26
+
 ### Changes
 
+- Link preview cards now render OpenGraph thumbnails and open a full-screen, pinch-to-zoom media viewer when tapped.
+- Settings gained a Link previews section with an enable/disable toggle and a cache clear action for the new preview store.
 - Link preview fetches are now backed by a 10-minute LRU cache so repeated URLs render instantly without hammering the remote host.
 
 ## [1.2.0] - 2025-11-26

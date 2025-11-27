@@ -1,8 +1,8 @@
 # The Lounge Parity Notes
 
-Last updated: 2025-11-25
+Last updated: 2025-11-27
 
-## Snapshot (Nov 25, 2025)
+## Snapshot (Nov 27, 2025)
 
 ### Android Client Highlights
 
@@ -14,7 +14,7 @@ Last updated: 2025-11-25
 - Orientation changes no longer nuke the session UI—connection form values, the active buffer, joined channel list, and composer text all survive rotation via `rememberSaveable` helpers.
 - Private/service buffer chips (Auth, ChanServ, PMs) now expose an inline close action so you can dismiss them just like in The Lounge until new activity brings them back.
 - When reconnecting to channels that advertise `draft/chathistory`, the client now issues `CHATHISTORY AFTER …` requests using the last persisted timestamp so missed messages are replayed automatically.
-- Link previews implemented client-side in `LinkPreview.kt` with Compose cards rendered in chat rows and an in-memory 10-minute cache to avoid re-fetching the same URL repeatedly.
+- Link previews implemented client-side in `LinkPreview.kt` with Compose cards rendered in chat rows, tappable thumbnails that open a pinch-to-zoom media viewer, and an in-memory 10-minute cache plus settings toggle/cache clear action.
 - Notifications + highlight badges via `NotificationHelper.kt`, `AppForeground.kt`, and the persisted mentions store.
 - Saved network profiles selectable in the connection form (profile picker Compose UI).
 - `ConnectionService.kt` keeps the socket in a foreground service backed by a persistent notification, so sessions remain alive even when the activity is backgrounded or reclaimed.
@@ -33,7 +33,7 @@ Last updated: 2025-11-25
 | --- | --- | --- | --- |
 | Mentions drawer & badges | `client/components/Mentions.vue`, `client/js/store/mentions.js` | ✅ Implemented (`MentionsStore.kt`, Compose drawer) | Persistence + UI match upstream behavior, including badges and clear action. |
 | Buffer unread/markers | `client/components/Buffer.vue`, store marker helpers | ✅ Implemented (scroll markers + dividers) | `pendingScrollTime`/`lastRead` logic replicates markers/new message divider behavior. |
-| Link previews | `client/js/plugins/preview.js`, `client/components/Message.vue` | ✅ Implemented (`LinkPreview.kt`, Compose cards, cached results) | Currently first-URL only and lacks policy toggles/media viewer. |
+| Link previews | `client/js/plugins/preview.js`, `client/components/Message.vue` | ✅ Implemented (`LinkPreview.kt`, Compose cards, cached results, media viewer) | First-URL only with in-memory cache, but now includes settings toggle + cache clear + pinch-to-zoom viewer. |
 | Multi-network profiles | `client/components/NetworkForm.vue` + server connection handling | ⚠️ Partial (`NetworkProfilesStore.kt`) | Profiles saved/switchable, but only one active network connection at a time; no simultaneous multi-network buffers. |
 | Always-on host & auth | `server/server.ts`, `server/clientManager.ts`, plugins `auth/*` | ⚠️ Partial (`ConnectionService.kt`) | Foreground service keeps a single-user session alive with notification controls, but we still lack multi-user auth and a true daemon like The Lounge server. |
 | Server-side history/logging | `server/plugins/messageStorage/*`, `storageCleaner.ts` | ⚠️ Partial | Local Room cache mirrors TL scrollback, and we now request `CHATHISTORY` playback on reconnect, but there is still no multi-device sync or true server-side storage yet. |
@@ -67,7 +67,7 @@ Last updated: 2025-11-25
 - **Upstream reference:** `client/js/plugins/preview.js`, `client/components/Message.vue`.
 - **Store strategy:** The Lounge server prefetches metadata and emits `msg.previews`. Client caches them per message.
 - **Android plan:** Implement a lightweight HTTP prefetch in the app (respecting size limits) or rely on a bridge API. Mirror their throttling and content-type filtering to avoid loading unsafe content.
-- **Status:** Client-side fetcher in `LinkPreview.kt` (size/time-limited HTML downloader) renders the first URL's preview with retry handling and now shares a 10-minute LRU cache (`LinkPreviewCache`) so repeated URLs do not re-fetch immediately. Remaining work: cache persistence/policy toggles and the media viewer parity.
+- **Status:** Client-side fetcher in `LinkPreview.kt` (size/time-limited HTML downloader) renders the first URL's preview with retry handling, shares a 10-minute LRU cache (`LinkPreviewCache`), exposes a Settings toggle + cache clear action, and now surfaces image thumbnails that open a pinch-to-zoom media viewer. Remaining work: persistent cache (beyond memory), multi-URL previews per message, and richer prefetch policies (size caps per network).
 
 ### Multi-Network Profiles
 
@@ -88,7 +88,7 @@ Last updated: 2025-11-25
 2. **Server-side history + log storage** — Upstream persists scrollback via the `server/plugins/messageStorage/*` (SQLite/text) and exposes cleanup policies (`storageCleaner.ts`). Our local Room cache mirrors 30-day / 5k-row history per buffer and we now consume `CHATHISTORY` to fill gaps after reconnects, but there is still no multi-device sync or server-authoritative log. Action: explore syncing the Room store with a Lounge backend for a single source of truth.
 3. **Web push + notification relays** — Files like `server/plugins/webpush.ts` integrate with browsers for push notifications and offline alerts. Android-only local notifications fire for highlights, but we lack any push subscription or relay for other devices. Action: decide whether to integrate with Firebase Cloud Messaging or bridge to a Lounge host.
 4. **File upload + media proxy** — TL ships uploader hooks (`server/plugins/uploader.ts`) and client UI (drag-and-drop in `client/components/ChatInput.vue`, previews in `client/components/Message.vue`). Our app has no upload feature, no proxying of HTTP assets, and no storage/quota UI. Action: spec an Android share-sheet upload flow targeting a configurable Lounge uploader endpoint.
-5. **Prefetch storage + media policies** — Beyond simple OpenGraph fetches, TL can cache thumbnails via `prefetchStorage` and enforce size caps/config toggles (see `defaults/config.js`’s `prefetch*` keys). Android currently fetches previews client-side without caching, proxying, or user settings. Action: expose preview toggles in Settings and cache responses per URL with eviction.
+5. **Prefetch storage + media policies** — Beyond simple OpenGraph fetches, TL can cache thumbnails via `prefetchStorage` and enforce per-network limits/filters (see `defaults/config.js`’s `prefetch*` keys). Android now caches previews in-memory, adds a Settings toggle, and supports manual cache clearing, but still lacks disk-backed storage, multi-link previews, and per-network policy knobs.
 6. **Plugin/theme ecosystem** — The Lounge exposes hooks under `server/plugins/*` and supports installable client themes (`client/components/Settings/Appearance.vue`). We have a fixed Material theme and no extension points for custom scripts/features. Action: introduce theme presets (light/dark/high contrast) and consider a plugin surface for automation scripts.
 7. **Advanced network plumbing** — WEBIRC, identd/oidentd, multi-network binding, and `lockNetwork`/`reverseProxy` controls in `defaults/config.js` are not represented in the Android UI. We only expose basic TLS, SASL, and channel options. Action: audit `defaults/config.js` options to determine which are feasible on-device (WEBIRC credentials, rejectUnauthorized toggle, etc.).
 8. **User/account management** — Lounge private mode supports multi-user credentials, password resets, and CLI management (`server/command-line`). Android lacks any notion of local user profiles beyond saved network configs. Action: decide whether to add multiple “persona” profiles or rely entirely on server auth.
@@ -99,7 +99,7 @@ Last updated: 2025-11-25
 | --- | --- | --- | --- |
 | TL-01 | Persist scrollback locally (Room/SQLDelight) to mirror `messageStorage` behavior | ✅ Done | Room-based `ScrollbackStore` seeds buffers on launch, persists every `UiEvent`, and prunes to 30 days / 5k rows per buffer. |
 | TL-02 | Multi-network simultaneous sessions (one per saved profile) | Todo | Requires refactoring `IrcClient.kt` to handle multiple sockets and UI tabs per network. |
-| TL-03 | Configurable link preview policy (enable/disable, size/time caps) | Todo | Hook settings screen into `LinkPreview.kt`, align with `defaults/config.js` controls. |
+| TL-03 | Configurable link preview policy (enable/disable, size/time caps) | ✅ Done | Settings > Link previews toggle + cache clear wiring landed; remaining stretch is per-network caps/persistent storage. |
 | TL-04 | File upload + share-sheet integration | Todo | Needs API contract with Lounge uploader plugin; consider fallback if endpoint unavailable. |
 | TL-05 | Push/relay notifications | In progress | Plan: integrate FCM token registration + relay endpoint so Lounge `webpush` plugin can fan-out highlight payloads even when app is backgrounded. |
 | TL-06 | Theme presets + appearance settings | In progress | First high-contrast “Force light theme” toggle landed; still need user-selectable palettes/backgrounds like `client/components/Settings/Appearance.vue`. |

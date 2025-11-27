@@ -28,6 +28,7 @@ object PrefsKeys {
     val SASL_PASSWORD = stringPreferencesKey("sasl_password")
     val STRIP_COLORS = booleanPreferencesKey("strip_colors")
     val ALLOW_BACKGROUNDS = booleanPreferencesKey("allow_backgrounds")
+    val LINK_PREVIEWS_ENABLED = booleanPreferencesKey("link_previews_enabled")
     val FONT_SCALE = intPreferencesKey("font_scale_percent")
     val QUIET_HOURS_ENABLED = booleanPreferencesKey("quiet_hours_enabled")
     val QUIET_HOURS_START = intPreferencesKey("quiet_hours_start")
@@ -51,6 +52,7 @@ data class SavedConfig(
     val saslPassword: String = "",
     val stripColors: Boolean = true,
     val allowBackgrounds: Boolean = false,
+    val linkPreviewsEnabled: Boolean = true,
     val fontScalePercent: Int = 100,
     val quietHoursEnabled: Boolean = false,
     val quietHoursStart: Int = 23,
@@ -77,6 +79,7 @@ suspend fun loadSavedConfig(context: Context): SavedConfig {
         saslPassword = prefs[PrefsKeys.SASL_PASSWORD] ?: "",
         stripColors = prefs[PrefsKeys.STRIP_COLORS] ?: true,
         allowBackgrounds = prefs[PrefsKeys.ALLOW_BACKGROUNDS] ?: false,
+        linkPreviewsEnabled = prefs[PrefsKeys.LINK_PREVIEWS_ENABLED] ?: true,
         fontScalePercent = prefs[PrefsKeys.FONT_SCALE] ?: 100,
         quietHoursEnabled = prefs[PrefsKeys.QUIET_HOURS_ENABLED] ?: false,
         quietHoursStart = prefs[PrefsKeys.QUIET_HOURS_START] ?: 23,
@@ -102,6 +105,7 @@ suspend fun saveConfig(context: Context, cfg: SavedConfig) {
         e[PrefsKeys.SASL_PASSWORD] = cfg.saslPassword
         e[PrefsKeys.STRIP_COLORS] = cfg.stripColors
         e[PrefsKeys.ALLOW_BACKGROUNDS] = cfg.allowBackgrounds
+        e[PrefsKeys.LINK_PREVIEWS_ENABLED] = cfg.linkPreviewsEnabled
         e[PrefsKeys.FONT_SCALE] = cfg.fontScalePercent
         e[PrefsKeys.QUIET_HOURS_ENABLED] = cfg.quietHoursEnabled
         e[PrefsKeys.QUIET_HOURS_START] = cfg.quietHoursStart

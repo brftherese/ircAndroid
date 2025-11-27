@@ -101,6 +101,7 @@ private fun SavedConfig.toJson(): JSONObject = JSONObject().apply {
     put("saslPassword", saslPassword)
     put("stripColors", stripColors)
     put("allowBackgrounds", allowBackgrounds)
+    put("linkPreviewsEnabled", linkPreviewsEnabled)
     put("fontScalePercent", fontScalePercent)
     put("quietHoursEnabled", quietHoursEnabled)
     put("quietHoursStart", quietHoursStart)
@@ -124,6 +125,7 @@ private fun JSONObject.toConfig(): SavedConfig = SavedConfig(
     saslPassword = optString("saslPassword", ""),
     stripColors = optBoolean("stripColors", true),
     allowBackgrounds = optBoolean("allowBackgrounds", false),
+    linkPreviewsEnabled = optBoolean("linkPreviewsEnabled", true),
     fontScalePercent = optInt("fontScalePercent", 100),
     quietHoursEnabled = optBoolean("quietHoursEnabled", false),
     quietHoursStart = optInt("quietHoursStart", 23),
