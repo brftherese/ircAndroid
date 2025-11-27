@@ -6,7 +6,8 @@ The Android client should eventually match the end-user abilities exposed by The
 
 - [x] Automated GitHub release workflow: signs APKs, attaches SHA256 checksums, and updates tags/releases (landed 2025-11-26).
 - [ ] Play Store prep: create an Internal Testing track, push the `.aab`, and document the publishing checklist.
-- [ ] Release workflow parity: expand `.github/workflows/release.yml` to run unit tests/lint before publishing and build/upload a `.aab` alongside the APK so Play uploads stay reproducible.
+- [ ] Release workflow parity: expand `.github/workflows/release.yml` to (1) run `./gradlew testDebugUnitTest` and `./gradlew lint` before the release job uploads artifacts, (2) build `bundleRelease` and publish the `.aab` next to the APK/checksum, and (3) fail fast if either build/test step fails so tags aren’t cut with broken bits.
+- [ ] Continuous integration on pull requests: add a separate GH Actions workflow for `push/pull_request` that runs lint + unit tests on every branch so regressions are caught before tagging.
 
 ## P0 - Core session parity
 

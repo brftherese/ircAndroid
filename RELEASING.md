@@ -153,8 +153,9 @@ Then the workflow will:
 - Set up JDK 17 + Android SDK
 - Install platform tools/build-tools via an explicit `sdkmanager` step so each package is requested separately
 - Recreate `local.properties` using the secrets and decode the keystore
-- Run `./gradlew assembleRelease`
-- Upload the APK and SHA256 checksum as workflow artifacts and as GitHub release assets (creating/updating the release for the tag)
+- Run `./gradlew testDebugUnitTest` **and** `./gradlew lint`; any failure stops the release so broken builds never get tagged
+- Run `./gradlew assembleRelease bundleRelease` to produce both the APK and the Play App Bundle in one pass
+- Upload the APK/AAB plus their SHA256 checksum files as workflow artifacts and as GitHub release assets (creating/updating the release for the tag)
 
 Use `workflow_dispatch` when you want to rebuild an existing tag (e.g., after fixing secrets) without pushing a new commit.
 

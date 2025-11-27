@@ -9,7 +9,7 @@ IRC Android is a Kotlin/Compose client that keeps conversations available offlin
 ## Current Status
 
 - Latest release: `v1.3.0` (signed APK + checksum on GitHub Releases).
-- GitHub Actions workflow builds every tagged release with Temurin 17, decodes the signing keystore from repository secrets, and publishes the package automatically.
+- GitHub Actions workflow now runs unit tests + lint for every tag, then builds both the signed APK and Play App Bundle before publishing artifacts automatically.
 - Roadmap progress and parity notes live in `TODO.md` and `docs/`.
 
 ## Highlights
@@ -23,7 +23,7 @@ IRC Android is a Kotlin/Compose client that keeps conversations available offlin
 ## Downloads & Packages
 
 - **Package ID:** `com.example.ircclient`.
-- **Signed release APK:** Download `app-release.apk` and `app-release.apk.sha256` from the latest GitHub Release—each is built and signed by GitHub Actions.
+- **Signed release APK + AAB:** Download `app-release.apk`, `app-release.apk.sha256`, `app-release.aab`, and `app-release.aab.sha256` from the latest GitHub Release—each is built and signed by GitHub Actions.
 
 ## Quickstart
 

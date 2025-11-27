@@ -68,19 +68,31 @@ jobs:
       - name: Grant execute perms
         run: chmod +x gradlew
 
-      - name: Build release APK
-        run: ./gradlew assembleRelease --stacktrace
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Run lint
+        run: ./gradlew lint --stacktrace
+
+      - name: Build release artifacts
+        run: ./gradlew assembleRelease bundleRelease --stacktrace
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-apk
-          path: app/build/outputs/apk/release/app-release.apk
+          name: app-release-artifacts
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/apk/release/app-release.apk.sha256
+            app/build/outputs/bundle/release/app-release.aab
+            app/build/outputs/bundle/release/app-release.aab.sha256
 
-      - name: Generate checksum
+      - name: Generate checksums
         run: |
           cd app/build/outputs/apk/release
           sha256sum app-release.apk > app-release.apk.sha256
+          cd ../../bundle/release
+          sha256sum app-release.aab > app-release.aab.sha256
 
       - name: Create or update Git tag
         if: github.event_name == 'workflow_dispatch'
@@ -97,5 +109,7 @@ jobs:
           files: |
             app/build/outputs/apk/release/app-release.apk
             app/build/outputs/apk/release/app-release.apk.sha256
+            app/build/outputs/bundle/release/app-release.aab
+            app/build/outputs/bundle/release/app-release.aab.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

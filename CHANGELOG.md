@@ -12,6 +12,7 @@ All notable changes to this project are documented in this file. The format roug
 
 - Added a command palette dialog in `MainActivity` that guides `/whois`, `/invite`, `/topic`, and `/ignore` commands with validation before inserting or sending them.
 - The chat composer now exposes a dedicated **Commands** button next to the Join controls so power users can launch the palette without typing prefixes manually.
+- The Release APK GitHub Actions workflow now gates on `testDebugUnitTest` + `lint` and uploads a signed `.aab` (with checksum) alongside the APK so Play submissions are reproducible.
 
 ## [1.3.0] - 2025-11-26
 
