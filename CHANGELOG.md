@@ -19,6 +19,8 @@ All notable changes to this project are documented in this file. The format roug
 - Link preview cards now render OpenGraph thumbnails and open a full-screen, pinch-to-zoom media viewer when tapped.
 - Settings gained a Link previews section with an enable/disable toggle and a cache clear action for the new preview store.
 - Link preview fetches are now backed by a 10-minute LRU cache so repeated URLs render instantly without hammering the remote host.
+- Added a command palette dialog in `MainActivity` that guides `/whois`, `/invite`, `/topic`, and `/ignore` commands with validation before inserting/sending them.
+- The chat composer now exposes a dedicated **Commands** button next to the Join controls so power users can launch the palette without typing prefixes manually.
 
 ## [1.2.0] - 2025-11-26
 

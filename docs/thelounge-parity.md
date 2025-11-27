@@ -15,6 +15,7 @@ Last updated: 2025-11-27
 - Private/service buffer chips (Auth, ChanServ, PMs) now expose an inline close action so you can dismiss them just like in The Lounge until new activity brings them back.
 - When reconnecting to channels that advertise `draft/chathistory`, the client now issues `CHATHISTORY AFTER …` requests using the last persisted timestamp so missed messages are replayed automatically.
 - Link previews implemented client-side in `LinkPreview.kt` with Compose cards rendered in chat rows, tappable thumbnails that open a pinch-to-zoom media viewer, and an in-memory 10-minute cache plus settings toggle/cache clear action.
+- Command palette dialog in `MainActivity.kt` mirrors The Lounge's advanced slash helpers with validated templates for `/whois`, `/invite`, `/topic`, and `/ignore`.
 - Notifications + highlight badges via `NotificationHelper.kt`, `AppForeground.kt`, and the persisted mentions store.
 - Saved network profiles selectable in the connection form (profile picker Compose UI).
 - `ConnectionService.kt` keeps the socket in a foreground service backed by a persistent notification, so sessions remain alive even when the activity is backgrounded or reclaimed.
@@ -34,6 +35,7 @@ Last updated: 2025-11-27
 | Mentions drawer & badges | `client/components/Mentions.vue`, `client/js/store/mentions.js` | ✅ Implemented (`MentionsStore.kt`, Compose drawer) | Persistence + UI match upstream behavior, including badges and clear action. |
 | Buffer unread/markers | `client/components/Buffer.vue`, store marker helpers | ✅ Implemented (scroll markers + dividers) | `pendingScrollTime`/`lastRead` logic replicates markers/new message divider behavior. |
 | Link previews | `client/js/plugins/preview.js`, `client/components/Message.vue` | ✅ Implemented (`LinkPreview.kt`, Compose cards, cached results, media viewer) | First-URL only with in-memory cache, but now includes settings toggle + cache clear + pinch-to-zoom viewer. |
+| Advanced command helpers | `client/components/Windows/Input.vue` (slash helper popovers) | ⚠️ Partial | Command palette dialog covers `/whois`, `/invite`, `/topic`, `/ignore` with validation; `/notice`, `/away`, `/query` tabs + autocomplete still pending. |
 | Multi-network profiles | `client/components/NetworkForm.vue` + server connection handling | ⚠️ Partial (`NetworkProfilesStore.kt`) | Profiles saved/switchable, but only one active network connection at a time; no simultaneous multi-network buffers. |
 | Always-on host & auth | `server/server.ts`, `server/clientManager.ts`, plugins `auth/*` | ⚠️ Partial (`ConnectionService.kt`) | Foreground service keeps a single-user session alive with notification controls, but we still lack multi-user auth and a true daemon like The Lounge server. |
 | Server-side history/logging | `server/plugins/messageStorage/*`, `storageCleaner.ts` | ⚠️ Partial | Local Room cache mirrors TL scrollback, and we now request `CHATHISTORY` playback on reconnect, but there is still no multi-device sync or true server-side storage yet. |

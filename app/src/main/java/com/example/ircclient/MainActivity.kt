@@ -73,8 +73,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -264,6 +267,7 @@ private fun MainScreen(
     var showSearchResults by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var showSuggestions by rememberSaveable { mutableStateOf(false) }
+    var showCommandPalette by rememberSaveable { mutableStateOf(false) }
     var mediaViewerUrl by rememberSaveable { mutableStateOf<String?>(null) }
 
     val channelEvents = remember { mutableStateMapOf<String, SnapshotStateList<UiEvent>>() }
@@ -885,7 +889,8 @@ private fun MainScreen(
                         if (chat.nick.equals(nick, ignoreCase = true)) return@onChatLongPress
                         val match = channelUsersMap[chat.nick.lowercase()]
                         pendingModerationTarget = ModerationTarget(chat.nick, match?.mode)
-                    }
+                    },
+                    onShowCommandPalette = { showCommandPalette = true }
                 )
             }
         }
@@ -988,6 +993,20 @@ private fun MainScreen(
         MediaViewerDialog(
             imageUrl = mediaViewerUrl,
             onDismiss = { mediaViewerUrl = null }
+        )
+
+        CommandPaletteDialog(
+            show = showCommandPalette,
+            currentChannel = currentChannel,
+            onDismiss = { showCommandPalette = false },
+            onCommand = { command, sendNow ->
+                val prepared = if (command.endsWith(" ")) command else "$command "
+                outgoing = TextFieldValue(prepared)
+                if (sendNow) {
+                    sendCurrentMessage()
+                }
+                showCommandPalette = false
+            }
         )
 
     ModerationActionDialog(
@@ -1206,6 +1225,7 @@ private fun SessionScreen(
     onShowSettings: () -> Unit,
     onOpenMedia: (String) -> Unit,
     onChatLongPress: (UiEvent.Chat) -> Unit,
+    onShowCommandPalette: () -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -1361,6 +1381,7 @@ private fun SessionScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedButton(onClick = onJoinRequest) { Text("Join") }
+                    OutlinedButton(onClick = onShowCommandPalette) { Text("Commands") }
                     Spacer(modifier = Modifier.weight(1f))
                     Button(onClick = onSend, enabled = connected || outgoing.text.startsWith("/")) { Text("Send") }
                 }
@@ -1643,6 +1664,164 @@ private fun MediaViewerDialog(imageUrl: String?, onDismiss: () -> Unit) {
             }
         }
     }
+}
+
+@Composable
+private fun CommandPaletteDialog(
+    show: Boolean,
+    currentChannel: String?,
+    onDismiss: () -> Unit,
+    onCommand: (String, Boolean) -> Unit,
+) {
+    if (!show) return
+    var selected by rememberSaveable(show) { mutableStateOf(CommandTemplate.WHOIS) }
+    var whoisNick by rememberSaveable(show) { mutableStateOf("") }
+    var inviteNick by rememberSaveable(show) { mutableStateOf("") }
+    var inviteChannel by rememberSaveable(show) { mutableStateOf(currentChannel ?: "") }
+    var topicChannel by rememberSaveable(show) { mutableStateOf(currentChannel ?: "") }
+    var topicText by rememberSaveable(show) { mutableStateOf("") }
+    var ignoreMode by rememberSaveable(show) { mutableStateOf(IgnoreCommandMode.ADD) }
+    var ignoreNick by rememberSaveable(show) { mutableStateOf("") }
+    val scrollState = rememberScrollState()
+    val (commandText, validationError) = remember(selected, whoisNick, inviteNick, inviteChannel, topicChannel, topicText, ignoreMode, ignoreNick, currentChannel) {
+        val command = when (selected) {
+            CommandTemplate.WHOIS -> {
+                val nick = whoisNick.trim()
+                if (nick.isEmpty()) null else "/whois ${nick}"
+            }
+            CommandTemplate.INVITE -> {
+                val nick = inviteNick.trim()
+                val channel = inviteChannel.takeIf { it.trim().startsWith("#") }?.trim()
+                    ?: currentChannel?.takeIf { it.startsWith("#") }
+                if (nick.isEmpty() || channel.isNullOrBlank()) null else "/invite ${nick} ${channel}"
+            }
+            CommandTemplate.TOPIC -> {
+                val channel = topicChannel.takeIf { it.trim().startsWith("#") }?.trim()
+                    ?: currentChannel?.takeIf { it.startsWith("#") }
+                val text = topicText.trim()
+                if (channel.isNullOrBlank() || text.isEmpty()) null else "/topic ${channel} ${text}"
+            }
+            CommandTemplate.IGNORE -> when (ignoreMode) {
+                IgnoreCommandMode.LIST -> "/ignore list"
+                IgnoreCommandMode.ADD -> ignoreNick.trim().takeIf { it.isNotEmpty() }?.let { "/ignore +${it}" }
+                IgnoreCommandMode.REMOVE -> ignoreNick.trim().takeIf { it.isNotEmpty() }?.let { "/ignore -${it}" }
+            }
+        }
+        val error = when {
+            selected == CommandTemplate.WHOIS && whoisNick.trim().isEmpty() -> "Enter a nick for /whois"
+            selected == CommandTemplate.INVITE && (inviteNick.trim().isEmpty() || (inviteChannel.trim().isEmpty() && (currentChannel?.startsWith("#") != true))) -> "Nick and channel required for /invite"
+            selected == CommandTemplate.TOPIC && (topicText.trim().isEmpty() || (topicChannel.trim().isEmpty() && (currentChannel?.startsWith("#") != true))) -> "Channel and topic required"
+            selected == CommandTemplate.IGNORE && ignoreMode.requiresNick && ignoreNick.trim().isEmpty() -> "Nick required for /ignore"
+            else -> null
+        }
+        command to error
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Command palette") },
+        text = {
+            Column(Modifier.fillMaxWidth().verticalScroll(scrollState), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                TabRow(selectedTabIndex = selected.ordinal) {
+                    CommandTemplate.values().forEachIndexed { index, template ->
+                        Tab(
+                            selected = selected == template,
+                            onClick = { selected = template },
+                            text = { Text(template.label) }
+                        )
+                    }
+                }
+                Text(selected.summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                when (selected) {
+                    CommandTemplate.WHOIS -> {
+                        OutlinedTextField(
+                            value = whoisNick,
+                            onValueChange = { whoisNick = it.take(32) },
+                            label = { Text("Nick") },
+                            singleLine = true
+                        )
+                    }
+                    CommandTemplate.INVITE -> {
+                        OutlinedTextField(
+                            value = inviteNick,
+                            onValueChange = { inviteNick = it.take(32) },
+                            label = { Text("Nick to invite") },
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = inviteChannel,
+                            onValueChange = { inviteChannel = it.take(64) },
+                            label = { Text("Channel") },
+                            placeholder = { Text(currentChannel ?: "#channel") },
+                            singleLine = true
+                        )
+                    }
+                    CommandTemplate.TOPIC -> {
+                        OutlinedTextField(
+                            value = topicChannel,
+                            onValueChange = { topicChannel = it.take(64) },
+                            label = { Text("Channel") },
+                            placeholder = { Text(currentChannel ?: "#channel") },
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = topicText,
+                            onValueChange = { topicText = it.take(240) },
+                            label = { Text("Topic text") },
+                            singleLine = false,
+                            minLines = 2
+                        )
+                    }
+                    CommandTemplate.IGNORE -> {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Action")
+                            IgnoreCommandMode.values().forEach { mode ->
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    RadioButton(selected = ignoreMode == mode, onClick = { ignoreMode = mode })
+                                    Text(mode.label)
+                                }
+                            }
+                            if (ignoreMode.requiresNick) {
+                                OutlinedTextField(
+                                    value = ignoreNick,
+                                    onValueChange = { ignoreNick = it.take(32) },
+                                    label = { Text("Nick") },
+                                    singleLine = true
+                                )
+                            }
+                        }
+                    }
+                }
+                validationError?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+                }
+                val commandPreview = commandText ?: ""
+                if (commandPreview.isNotBlank()) {
+                    Text(commandPreview, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                }
+            }
+        },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { commandText?.let { onCommand(it, false) } }, enabled = commandText != null) { Text("Insert") }
+                Button(onClick = { commandText?.let { onCommand(it, true) } }, enabled = commandText != null) { Text("Send") }
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+private enum class CommandTemplate(val label: String, val summary: String) {
+    WHOIS("Whois", "Look up user info without remembering syntax."),
+    INVITE("Invite", "Invite someone into the current or selected channel."),
+    TOPIC("Topic", "Set the channel topic in one step."),
+    IGNORE("Ignore", "Add, remove, or list ignored nicks without typing commands."),
+}
+
+private enum class IgnoreCommandMode(val label: String, val requiresNick: Boolean) {
+    ADD("Add", true),
+    REMOVE("Remove", true),
+    LIST("List", false);
 }
 
 @Composable

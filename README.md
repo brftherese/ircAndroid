@@ -8,7 +8,7 @@ IRC Android is a Kotlin/Compose client that keeps conversations available offlin
 
 ## Current Status
 
-- Latest release: `v1.2.0` (signed APK + checksum on GitHub Releases).
+- Latest release: `v1.3.0` (signed APK + checksum on GitHub Releases).
 - GitHub Actions workflow builds every tagged release with Temurin 17, decodes the signing keystore from repository secrets, and publishes the package automatically.
 - Roadmap progress and parity notes live in `TODO.md` and `docs/`.
 
@@ -17,7 +17,7 @@ IRC Android is a Kotlin/Compose client that keeps conversations available offlin
 - Multi-network profiles with SASL settings, quiet hours, and per-buffer mute controls.
 - Room-powered scrollback (30 days / 5k events) plus CHATHISTORY replay to fill gaps after reconnects.
 - Mentions drawer, unread/highlight chips, quiet hours, and Android 13+ notification permission handling.
-- Rich slash command support, inline moderation menus, cached link previews with inline media viewer + cache controls, search, and dismissable service buffers.
+- Rich slash command support with a guided command palette (WHOIS, INVITE, TOPIC, IGNORE), inline moderation menus, cached link previews with inline media viewer + cache controls, search, and dismissable service buffers.
 - Force-light/e-ink mode, adjustable font scaling, and compact layout for tablets or glare-heavy screens.
 
 ## Downloads & Packages

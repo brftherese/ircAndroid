@@ -6,6 +6,7 @@ The Android client should eventually match the end-user abilities exposed by The
 
 - [x] Automated GitHub release workflow: signs APKs, attaches SHA256 checksums, and updates tags/releases (landed 2025-11-26).
 - [ ] Play Store prep: create an Internal Testing track, push the `.aab`, and document the publishing checklist.
+- [ ] Release workflow parity: expand `.github/workflows/release.yml` to run unit tests/lint before publishing and build/upload a `.aab` alongside the APK so Play uploads stay reproducible.
 
 ## P0 - Core session parity
 
@@ -23,9 +24,9 @@ The Android client should eventually match the end-user abilities exposed by The
 - [x] Orientation resilience: keep the active session, buffer list, and composer input intact across rotation so a landscape switch doesn’t drop you back to Status or force a reconnect.
 - [x] Dismissable service/PM chips: add inline close controls to Auth/ChanServ/PM buffers so the chip row stays focused on the channels you care about.
 - [x] Rich link previews + media viewer: port The Lounge `prefetch`/`ImageViewer` flow so URLs unfurl (with caching and size limits) and inline image/video modals are available on Android. _(Client-side previews now include tappable thumbnails, a pinch-to-zoom media viewer, and Settings controls to disable or clear the cache.)_
-- [ ] File uploads: add share sheet + upload handling to parity with `fileUpload` support on the server side.
+- [ ] File uploads: add share sheet + upload handling to parity with `fileUpload` support on the server side. _(Explored 2025-11-26: options are reusing a self-hosted The Lounge uploader or wiring Firebase Storage with anonymous auth; decision pending until we pick a backend contract.)_
 - [x] Context menus + moderation tools: long-press actions for kick/ban/voice/op, mirroring `ContextMenu.vue`. _(User list + chat row menus with privilege-aware enablement landed 2025-11-23.)_
-- [ ] Advanced commands UI: expose helpers for `/ignore`, `/query`, `/topic`, `/notice`, `/invite`, `/away`, `/whois` with autocomplete and validation just like the desktop client. _(In progress – /notice, /invite, /away, `/ignore`, smarter `/topic`, `/query`, and improved `/whois` feedback landed on 2025-11-22/23; remaining work: contextual validation + UI affordances for power users.)_
+- [ ] Advanced commands UI: expose helpers for `/ignore`, `/query`, `/topic`, `/notice`, `/invite`, `/away`, `/whois` with autocomplete and validation just like the desktop client. _(In progress – /notice, /invite, /away, `/ignore`, smarter `/topic`, `/query`, and improved `/whois` feedback landed on 2025-11-22/23; command palette dialog with validated templates for `/whois`, `/invite`, `/topic`, `/ignore` landed 2025-11-26. Still pending: `/notice` + `/away` palette tabs, autocomplete tie-ins, and per-server capability hints.)_
 
 ## P2 - Personalization + integrations
 
